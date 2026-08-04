@@ -7,6 +7,10 @@ import { Input } from "@/components/ui/Input";
 import { useCartStore } from "@/lib/store/cart";
 import { formatBRL } from "@/lib/utils";
 import { toast } from "@/components/ui/Toast";
+import { MetodoPagamento, metodosPagamento } from "@/lib/pagamento";
+import { ResumoConfirmacao } from "@/components/pedido/ResumoConfirmacao";
+import { mockRestaurante } from "@/lib/mock";
+import { ItemSacola } from "@/types/domain";
 
 type Step = "endereco" | "sacola" | "confirmado";
 
@@ -25,6 +29,12 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
   const [loading, setLoading] = useState(false);
   const [numeroPedido, setNumeroPedido] = useState<string | null>(null);
   const [pedidoId, setPedidoId] = useState<string | null>(null);
+  const [pagamento, setPagamento] = useState<MetodoPagamento>("pix");
+  const [pedidoConfirmado, setPedidoConfirmado] = useState<{
+    itens: ItemSacola[];
+    total: number;
+    pagamento: MetodoPagamento;
+  } | null>(null);
 
   const [endereco, setEndereco] = useState<Endereco>({
     logradouro: "",
@@ -51,6 +61,8 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
 
   async function confirmarPedido() {
     if (!itens.length) return;
+    const itensPedido = itens;
+    const totalPedido = itensPedido.reduce((acc, item) => acc + item.preco_total, 0);
     setLoading(true);
     try {
       /* Em produção: apiPost("/restaurantes/slug/pedidos", payload) */
@@ -59,6 +71,7 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
       const id = `ped-${Date.now()}`;
       setNumeroPedido(numero);
       setPedidoId(id);
+      setPedidoConfirmado({ itens: itensPedido, total: totalPedido, pagamento });
       limparSacola();
       setStep("confirmado");
     } catch {
@@ -88,14 +101,19 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
               Recebemos seu pedido! Você pode acompanhar o status abaixo.
             </p>
           </div>
-          <div className="bg-white rounded-2xl p-4 w-full max-w-xs border border-neutral-100 text-left text-sm">
-            <p className="font-semibold text-neutral-700 mb-1">📍 Endereço de entrega</p>
-            <p className="text-neutral-500">
-              {endereco.logradouro}, {endereco.numero}
-              {endereco.complemento ? ` - ${endereco.complemento}` : ""}
-            </p>
-            <p className="text-neutral-500">{endereco.bairro}, {endereco.cidade} — {endereco.cep}</p>
-          </div>
+          {pedidoConfirmado && (
+            <ResumoConfirmacao
+              previsao="Entrega em até 45 min"
+              itens={pedidoConfirmado.itens}
+              total={pedidoConfirmado.total}
+              metodoPagamento={metodosPagamento.find((m) => m.key === pedidoConfirmado.pagamento)?.label ?? ""}
+              localLabel="Endereço de entrega"
+              localDetalhe={`${endereco.logradouro}, ${endereco.numero}${
+                endereco.complemento ? ` - ${endereco.complemento}` : ""
+              } — ${endereco.bairro}, ${endereco.cidade} — CEP ${endereco.cep}`}
+              chavePix={mockRestaurante.chave_pix ?? ""}
+            />
+          )}
           <div className="flex flex-col gap-3 w-full max-w-xs">
             {pedidoId && (
               <Link href={`/${slug}/pedido/${pedidoId}`}>
@@ -272,6 +290,25 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
                   <span>{formatBRL(totalSacola)}</span>
                 </li>
               </ul>
+            )}
+
+            {/* Método de pagamento */}
+            {itens.length > 0 && (
+              <div className="flex gap-2 mt-4 pt-4 border-t border-neutral-100">
+                {metodosPagamento.map((m) => (
+                  <button
+                    key={m.key}
+                    onClick={() => setPagamento(m.key)}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 transition-colors ${
+                      pagamento === m.key
+                        ? "border-coral-500 text-coral-600 bg-coral-50"
+                        : "border-neutral-200 text-neutral-500 hover:border-neutral-300"
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         )}

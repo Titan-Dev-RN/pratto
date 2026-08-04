@@ -18,6 +18,7 @@ export interface Restaurante {
   nome: string;
   logo_url?: string;
   cor_primaria?: string;
+  chave_pix?: string;
   ativo: boolean;
 }
 

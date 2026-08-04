@@ -5,6 +5,7 @@ export const mockRestaurante: Restaurante = {
   slug: "tacos",
   nome: "Tacos & Co",
   logo_url: undefined,
+  chave_pix: "contato@tacoseco.com.br",
   ativo: true,
 };
 

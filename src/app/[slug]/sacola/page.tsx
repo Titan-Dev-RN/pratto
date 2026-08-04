@@ -8,14 +8,9 @@ import { useCartStore } from "@/lib/store/cart";
 import { formatBRL } from "@/lib/utils";
 import { toast } from "@/components/ui/Toast";
 import { mockRestaurante } from "@/lib/mock";
-
-type MetodoPagamento = "pix" | "cartao" | "dinheiro";
-
-const metodos: { key: MetodoPagamento; label: string }[] = [
-  { key: "pix", label: "Pix" },
-  { key: "cartao", label: "Cartão" },
-  { key: "dinheiro", label: "Dinheiro" },
-];
+import { MetodoPagamento, metodosPagamento } from "@/lib/pagamento";
+import { ResumoConfirmacao } from "@/components/pedido/ResumoConfirmacao";
+import { ItemSacola } from "@/types/domain";
 
 export default function SacolaPage({ params }: { params: Promise<{ slug: string }> }) {
   return (
@@ -32,20 +27,28 @@ function SacolaContent({ params }: { params: Promise<{ slug: string }> }) {
 
   const [loading, setLoading] = useState(false);
   const [pagamento, setPagamento] = useState<MetodoPagamento>("pix");
-  const [pedidoConfirmado, setPedidoConfirmado] = useState<{ id: string; numero: string } | null>(null);
+  const [pedidoConfirmado, setPedidoConfirmado] = useState<{
+    id: string;
+    numero: string;
+    itens: ItemSacola[];
+    total: number;
+    pagamento: MetodoPagamento;
+  } | null>(null);
 
   const { itens, total: getTotal, removerItem, atualizarQuantidade, limparSacola } = useCartStore();
   const totalSacola = getTotal();
 
   async function enviarPedido() {
     if (!itens.length) return;
+    const itensPedido = itens;
+    const totalPedido = itensPedido.reduce((acc, item) => acc + item.preco_total, 0);
     setLoading(true);
     try {
       await new Promise((r) => setTimeout(r, 1000));
       const numero = String(Math.floor(Math.random() * 900) + 100);
       const id = `ped-${Date.now()}`;
+      setPedidoConfirmado({ id, numero, itens: itensPedido, total: totalPedido, pagamento });
       limparSacola();
-      setPedidoConfirmado({ id, numero });
     } catch {
       toast.error("Erro ao enviar pedido", "Tente novamente.", {
         label: "Tentar novamente",
@@ -67,6 +70,15 @@ function SacolaContent({ params }: { params: Promise<{ slug: string }> }) {
             {mesaId ? `Pedido enviado para a cozinha. Mesa ${mesaId}.` : "Seu pedido foi recebido!"}
           </p>
         </div>
+        <ResumoConfirmacao
+          previsao={mesaId ? "Pronto em até 20 min" : "Pronto para retirada em até 20 min"}
+          itens={pedidoConfirmado.itens}
+          total={pedidoConfirmado.total}
+          metodoPagamento={metodosPagamento.find((m) => m.key === pedidoConfirmado.pagamento)?.label ?? ""}
+          localLabel={mesaId ? "Mesa" : "Retirada"}
+          localDetalhe={mesaId ? `Mesa ${mesaId}` : "Retirada no balcão da loja"}
+          chavePix={mockRestaurante.chave_pix ?? ""}
+        />
         <div className="flex flex-col gap-3 w-full max-w-xs">
           <Link href={`/${slug}/pedido/${pedidoConfirmado.id}`}>
             <button className="w-full bg-coral-500 text-white rounded-2xl py-4 px-5 font-semibold text-base shadow-lg shadow-coral-200 active:bg-coral-600 transition-colors">
@@ -179,7 +191,7 @@ function SacolaContent({ params }: { params: Promise<{ slug: string }> }) {
 
               {/* Método de pagamento */}
               <div className="flex gap-2 mt-4 pt-4 border-t border-neutral-100">
-                {metodos.map((m) => (
+                {metodosPagamento.map((m) => (
                   <button
                     key={m.key}
                     onClick={() => setPagamento(m.key)}
