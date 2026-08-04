@@ -4,7 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSessionStore } from "@/lib/store/session";
-import { mockRestaurante, mockMesas, mockProdutos, mockCategorias } from "@/lib/mock";
+import { useRestauranteAdmin } from "@/lib/api/queries/restaurante";
+import { useCategoriasAdmin, useProdutosAdmin } from "@/lib/api/queries/menu";
+import { useMesas } from "@/lib/api/queries/mesas";
+import { useAtualizarUsuario } from "@/lib/api/queries/usuarios";
+import { apiErrorMessage } from "@/lib/api/client";
 import { toast } from "@/components/ui/Toast";
 
 const roleInfo: Record<string, { label: string; desc: string; cor: string }> = {
@@ -16,28 +20,37 @@ const roleInfo: Record<string, { label: string; desc: string; cor: string }> = {
 
 export default function PerfilPage() {
   const router = useRouter();
-  const { usuario, clearSession, hasRole } = useSessionStore();
+  const { usuario, clearSession, hasRole, setSession, token } = useSessionStore();
   const [editando, setEditando] = useState(false);
   const [nome, setNome] = useState(usuario?.nome ?? "");
-  const [salvando, setSalvando] = useState(false);
 
   const isAdmin = hasRole(["admin", "superadmin"]);
   const role = usuario?.role ?? "garcom";
   const info = roleInfo[role] ?? roleInfo.garcom;
 
-  const restaurante = mockRestaurante;
-  const totalMesas = mockMesas.length;
-  const totalProdutos = mockProdutos.filter((p) => p.ativo).length;
-  const totalCategorias = mockCategorias.filter((c) => c.ativa).length;
+  const { data: restauranteData } = useRestauranteAdmin();
+  const { data: mesasData } = useMesas();
+  const { data: produtosData } = useProdutosAdmin();
+  const { data: categoriasData } = useCategoriasAdmin();
+  const atualizarUsuario = useAtualizarUsuario();
+
+  const restaurante = restauranteData?.data;
+  const totalMesas = mesasData?.data.length ?? 0;
+  const totalProdutos = produtosData?.data.filter((p) => p.ativo).length ?? 0;
+  const totalCategorias = categoriasData?.data.filter((c) => c.ativa).length ?? 0;
   const inicial = (usuario?.nome ?? "U").charAt(0).toUpperCase();
+  const salvando = atualizarUsuario.isPending;
 
   async function salvarNome() {
-    if (!nome.trim()) return;
-    setSalvando(true);
-    await new Promise((r) => setTimeout(r, 600));
-    toast.success("Perfil atualizado!");
-    setSalvando(false);
-    setEditando(false);
+    if (!nome.trim() || !usuario || !token) return;
+    try {
+      await atualizarUsuario.mutateAsync({ id: usuario.id, dados: { nome: nome.trim() } });
+      setSession(token, { ...usuario, nome: nome.trim() });
+      toast.success("Perfil atualizado!");
+      setEditando(false);
+    } catch (err) {
+      toast.error("Não foi possível salvar", apiErrorMessage(err));
+    }
   }
 
   function handleLogout() {
@@ -119,7 +132,7 @@ export default function PerfilPage() {
         </div>
 
         {/* Card: Restaurante (somente admin) */}
-        {isAdmin && (
+        {isAdmin && restaurante && (
           <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden">
             <div className="px-5 pt-4 pb-2 flex items-center justify-between">
               <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Restaurante</p>
@@ -164,7 +177,7 @@ export default function PerfilPage() {
                 label="Configurações do restaurante"
               />
               <ActionRow
-                href={`/${restaurante.slug}`}
+                href={`/${restaurante?.slug ?? ""}`}
                 external
                 icon={
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

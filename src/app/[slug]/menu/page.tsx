@@ -5,10 +5,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { mockCategorias, mockProdutos, mockRestaurante } from "@/lib/mock";
+import { useCategorias, useProdutos, useRestaurante } from "@/lib/api/queries/menu";
 import { Produto } from "@/types/domain";
 import { useCartStore } from "@/lib/store/cart";
 import { Button } from "@/components/ui/Button";
+import { Spinner } from "@/components/ui/Spinner";
 import { formatBRL } from "@/lib/utils";
 
 export default function MenuPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -28,11 +29,15 @@ function MenuContent({ params }: { params: Promise<{ slug: string }> }) {
 
   const { adicionarItem, quantidadeTotal, total: getTotal, setContexto } = useCartStore();
 
-  const restaurante = mockRestaurante;
-  const categorias = mockCategorias;
-  const produtos = mockProdutos;
+  const { data: restauranteData, isLoading: carregandoRestaurante } = useRestaurante(slug);
+  const { data: categoriasData, isLoading: carregandoCategorias } = useCategorias(slug);
+  const { data: produtosData, isLoading: carregandoProdutos } = useProdutos(slug);
 
-  useMemo(() => setContexto(slug), [slug, setContexto]);
+  const restaurante = restauranteData?.data;
+  const categorias = categoriasData?.data ?? [];
+  const produtos = produtosData?.data ?? [];
+
+  useMemo(() => setContexto(slug, mesaId ?? undefined), [slug, mesaId, setContexto]);
 
   const produtosFiltrados = produtos.filter(
     (p) => (!categoriaAtiva || p.categoria_id === categoriaAtiva) && p.ativo
@@ -41,6 +46,14 @@ function MenuContent({ params }: { params: Promise<{ slug: string }> }) {
   const destaques = produtos.filter((p) => p.ativo).slice(0, 4);
   const totalSacola = getTotal();
   const qtdSacola = quantidadeTotal();
+
+  if (carregandoRestaurante || carregandoCategorias || carregandoProdutos || !restaurante) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Spinner />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white">

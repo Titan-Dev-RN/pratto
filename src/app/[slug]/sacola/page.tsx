@@ -7,7 +7,9 @@ import { Suspense } from "react";
 import { useCartStore } from "@/lib/store/cart";
 import { formatBRL } from "@/lib/utils";
 import { toast } from "@/components/ui/Toast";
-import { mockRestaurante } from "@/lib/mock";
+import { useRestaurante } from "@/lib/api/queries/menu";
+import { useCriarPedido } from "@/lib/api/queries/orders";
+import { apiErrorMessage } from "@/lib/api/client";
 import { MetodoPagamento, metodosPagamento } from "@/lib/pagamento";
 import { ResumoConfirmacao } from "@/components/pedido/ResumoConfirmacao";
 import { ItemSacola } from "@/types/domain";
@@ -25,7 +27,6 @@ function SacolaContent({ params }: { params: Promise<{ slug: string }> }) {
   const searchParams = useSearchParams();
   const mesaId = searchParams.get("mesa");
 
-  const [loading, setLoading] = useState(false);
   const [pagamento, setPagamento] = useState<MetodoPagamento>("pix");
   const [pedidoConfirmado, setPedidoConfirmado] = useState<{
     id: string;
@@ -38,24 +39,32 @@ function SacolaContent({ params }: { params: Promise<{ slug: string }> }) {
   const { itens, total: getTotal, removerItem, atualizarQuantidade, limparSacola } = useCartStore();
   const totalSacola = getTotal();
 
+  const { data: restauranteData } = useRestaurante(slug);
+  const restaurante = restauranteData?.data;
+  const criarPedido = useCriarPedido(slug);
+  const loading = criarPedido.isPending;
+
   async function enviarPedido() {
     if (!itens.length) return;
     const itensPedido = itens;
     const totalPedido = itensPedido.reduce((acc, item) => acc + item.preco_total, 0);
-    setLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 1000));
-      const numero = String(Math.floor(Math.random() * 900) + 100);
-      const id = `ped-${Date.now()}`;
-      setPedidoConfirmado({ id, numero, itens: itensPedido, total: totalPedido, pagamento });
+      const { data: pedido } = await criarPedido.mutateAsync({
+        mesa_id: mesaId ?? undefined,
+        tipo: mesaId ? "mesa" : "balcao",
+        itens: itensPedido.map((item) => ({
+          produto_id: item.produto.id,
+          quantidade: item.quantidade,
+          observacao: item.observacao,
+        })),
+      });
+      setPedidoConfirmado({ id: pedido.id, numero: pedido.numero, itens: itensPedido, total: totalPedido, pagamento });
       limparSacola();
-    } catch {
-      toast.error("Erro ao enviar pedido", "Tente novamente.", {
+    } catch (err) {
+      toast.error("Erro ao enviar pedido", apiErrorMessage(err), {
         label: "Tentar novamente",
         onClick: enviarPedido,
       });
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -77,7 +86,7 @@ function SacolaContent({ params }: { params: Promise<{ slug: string }> }) {
           metodoPagamento={metodosPagamento.find((m) => m.key === pedidoConfirmado.pagamento)?.label ?? ""}
           localLabel={mesaId ? "Mesa" : "Retirada"}
           localDetalhe={mesaId ? `Mesa ${mesaId}` : "Retirada no balcão da loja"}
-          chavePix={mockRestaurante.chave_pix ?? ""}
+          chavePix={restaurante?.chave_pix ?? ""}
         />
         <div className="flex flex-col gap-3 w-full max-w-xs">
           <Link href={`/${slug}/pedido/${pedidoConfirmado.id}`}>
@@ -110,7 +119,7 @@ function SacolaContent({ params }: { params: Promise<{ slug: string }> }) {
         <div className="flex-1 min-w-0">
           <h1 className="font-bold text-neutral-900 text-base leading-tight">Sua sacola</h1>
           <p className="text-xs text-neutral-400 mt-0.5">
-            {mockRestaurante.nome}{mesaId ? ` · Mesa ${mesaId}` : ""}
+            {restaurante?.nome}{mesaId ? ` · Mesa ${mesaId}` : ""}
           </p>
         </div>
       </header>

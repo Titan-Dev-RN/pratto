@@ -3,14 +3,10 @@ import { apiGet } from "@/lib/api/client";
 import { ApiResponse } from "@/types/api";
 import { DashboardKPI } from "@/types/domain";
 
-export function useDashboard(restauranteId: string) {
+export function useDashboard() {
   return useQuery({
-    queryKey: ["dashboard", restauranteId],
-    queryFn: () =>
-      apiGet<ApiResponse<DashboardKPI>>(
-        `/dashboard?restaurante_id=${restauranteId}`,
-        true
-      ),
+    queryKey: ["dashboard"],
+    queryFn: () => apiGet<ApiResponse<DashboardKPI>>("/cliente/dashboard", true),
     refetchInterval: 60_000,
   });
 }

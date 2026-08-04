@@ -2,9 +2,11 @@
 
 import { use, useState } from "react";
 import Link from "next/link";
-import { mockPedidos, mockRestaurante } from "@/lib/mock";
+import { usePedidoPublico } from "@/lib/api/queries/orders";
+import { useRestaurante } from "@/lib/api/queries/menu";
 import { OrderStatus } from "@/types/domain";
 import { formatBRL } from "@/lib/utils";
+import { Spinner } from "@/components/ui/Spinner";
 
 const steps: { status: OrderStatus; label: string; desc?: string }[] = [
   { status: "confirmado", label: "Pedido recebido" },
@@ -26,7 +28,19 @@ export default function PedidoPage({ params }: { params: Promise<{ slug: string;
   const { slug, id } = use(params);
   const [mostrarItens, setMostrarItens] = useState(false);
 
-  const pedido = mockPedidos.find((p) => p.id === id) ?? mockPedidos[0];
+  const { data: pedidoData, isLoading } = usePedidoPublico(id);
+  const { data: restauranteData } = useRestaurante(slug);
+  const pedido = pedidoData?.data;
+  const restaurante = restauranteData?.data;
+
+  if (isLoading || !pedido) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Spinner />
+      </div>
+    );
+  }
+
   const statusIdx = statusOrder.indexOf(pedido.status);
 
   const titulo = statusTitulo[pedido.status] ?? "Acompanhe seu pedido";
@@ -45,7 +59,7 @@ export default function PedidoPage({ params }: { params: Promise<{ slug: string;
         </Link>
         <div className="flex-1 min-w-0">
           <p className="text-xs text-neutral-400">Pedido #{pedido.numero}</p>
-          <p className="text-sm font-medium text-neutral-700 truncate">{mockRestaurante.nome}</p>
+          <p className="text-sm font-medium text-neutral-700 truncate">{restaurante?.nome}</p>
         </div>
       </header>
 
@@ -144,7 +158,7 @@ export default function PedidoPage({ params }: { params: Promise<{ slug: string;
           <div className="bg-green-50 border border-green-200 rounded-2xl p-5 text-center">
             <p className="text-3xl mb-2">😊</p>
             <p className="font-semibold text-green-800">Bom apetite!</p>
-            <p className="text-sm text-green-600 mt-1">Obrigado por pedir no {mockRestaurante.nome}</p>
+            <p className="text-sm text-green-600 mt-1">Obrigado por pedir no {restaurante?.nome}</p>
           </div>
         )}
       </main>

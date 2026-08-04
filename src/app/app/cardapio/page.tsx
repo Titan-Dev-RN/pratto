@@ -2,24 +2,40 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { mockCategorias, mockProdutos } from "@/lib/mock";
+import {
+  useCategoriasAdmin,
+  useProdutosAdmin,
+  useSalvarCategoria,
+  useExcluirCategoria,
+  useSalvarProduto,
+  useExcluirProduto,
+} from "@/lib/api/queries/menu";
 import { Categoria, Produto } from "@/types/domain";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { Spinner } from "@/components/ui/Spinner";
 import { formatBRL } from "@/lib/utils";
 import { CategoriaFormModal } from "@/components/team/CategoriaFormModal";
 import { ProdutoFormModal } from "@/components/team/ProdutoFormModal";
 import { DragList } from "@/components/team/DragList";
 import { toast } from "@/components/ui/Toast";
+import { apiErrorMessage } from "@/lib/api/client";
 
 type Tab = "produtos" | "categorias";
 
 export default function CardapioAdminPage() {
   const [tab, setTab] = useState<Tab>("produtos");
 
-  /* Estado local (em produção: TanStack Query + mutations) */
-  const [categorias, setCategorias] = useState<Categoria[]>(mockCategorias);
-  const [produtos, setProdutos] = useState<Produto[]>(mockProdutos);
+  const { data: categoriasData, isLoading: carregandoCategorias } = useCategoriasAdmin();
+  const { data: produtosData, isLoading: carregandoProdutos } = useProdutosAdmin();
+
+  const categorias = categoriasData?.data ?? [];
+  const produtos = produtosData?.data ?? [];
+
+  const salvarCategoriaMutation = useSalvarCategoria();
+  const excluirCategoriaMutation = useExcluirCategoria();
+  const salvarProdutoMutation = useSalvarProduto();
+  const excluirProdutoMutation = useExcluirProduto();
 
   /* Filtro de categoria na aba produtos */
   const [categoriaFiltro, setCategoriaFiltro] = useState<string | null>(null);
@@ -31,78 +47,98 @@ export default function CardapioAdminPage() {
   /* ──────────────────────────────────────
      Handlers de categoria
   ─────────────────────────────────────── */
-  function salvarCategoria(dados: { nome: string; descricao: string }) {
-    if (modalCategoria === "novo") {
-      const nova: Categoria = {
-        id: `c${Date.now()}`,
-        restaurante_id: "r1",
-        ativa: true,
-        ordem: categorias.length + 1,
-        ...dados,
-      };
-      setCategorias((prev) => [...prev, nova]);
-      toast.success("Categoria criada!");
-    } else if (modalCategoria) {
-      setCategorias((prev) =>
-        prev.map((c) => (c.id === modalCategoria.id ? { ...c, ...dados } : c))
-      );
-      toast.success("Categoria atualizada!");
+  async function salvarCategoria(dados: { nome: string; descricao: string }) {
+    try {
+      const editando = modalCategoria !== "novo" ? modalCategoria : null;
+      await salvarCategoriaMutation.mutateAsync({ id: editando?.id, dados });
+      toast.success(editando ? "Categoria atualizada!" : "Categoria criada!");
+      setModalCategoria(null);
+    } catch (err) {
+      toast.error("Erro ao salvar categoria", apiErrorMessage(err));
     }
-    setModalCategoria(null);
   }
 
-  function excluirCategoria() {
+  async function excluirCategoria() {
     if (!modalCategoria || modalCategoria === "novo") return;
-    const id = modalCategoria.id;
-    setCategorias((prev) => prev.filter((c) => c.id !== id));
-    setProdutos((prev) => prev.filter((p) => p.categoria_id !== id));
-    toast.success("Categoria excluída.");
-    setModalCategoria(null);
+    try {
+      await excluirCategoriaMutation.mutateAsync(modalCategoria.id);
+      toast.success("Categoria excluída.");
+      setModalCategoria(null);
+    } catch (err) {
+      toast.error("Erro ao excluir categoria", apiErrorMessage(err));
+    }
   }
 
-  function toggleCategoria(id: string) {
-    setCategorias((prev) => prev.map((c) => (c.id === id ? { ...c, ativa: !c.ativa } : c)));
+  function toggleCategoria(categoria: Categoria) {
+    salvarCategoriaMutation.mutate({
+      id: categoria.id,
+      dados: { nome: categoria.nome, descricao: categoria.descricao ?? "", ativa: !categoria.ativa },
+    });
   }
 
   /* ──────────────────────────────────────
      Handlers de produto
   ─────────────────────────────────────── */
-  function salvarProduto(dados: Omit<Produto, "id" | "restaurante_id">) {
-    if (modalProduto === "novo") {
-      const novo: Produto = {
-        id: `p${Date.now()}`,
-        restaurante_id: "r1",
-        ...dados,
-      };
-      setProdutos((prev) => [...prev, novo]);
-      toast.success("Produto criado!");
-    } else if (modalProduto) {
-      setProdutos((prev) =>
-        prev.map((p) => (p.id === modalProduto.id ? { ...p, ...dados } : p))
-      );
-      toast.success("Produto atualizado!");
+  async function salvarProduto(dados: Omit<Produto, "id" | "restaurante_id">) {
+    try {
+      const editando = modalProduto !== "novo" ? modalProduto : null;
+      await salvarProdutoMutation.mutateAsync({ id: editando?.id, dados });
+      toast.success(editando ? "Produto atualizado!" : "Produto criado!");
+      setModalProduto(null);
+    } catch (err) {
+      toast.error("Erro ao salvar produto", apiErrorMessage(err));
     }
-    setModalProduto(null);
   }
 
-  function excluirProduto() {
+  async function excluirProduto() {
     if (!modalProduto || modalProduto === "novo") return;
-    const id = modalProduto.id;
-    setProdutos((prev) => prev.filter((p) => p.id !== id));
-    toast.success("Produto excluído.");
-    setModalProduto(null);
+    try {
+      await excluirProdutoMutation.mutateAsync(modalProduto.id);
+      toast.success("Produto excluído.");
+      setModalProduto(null);
+    } catch (err) {
+      toast.error("Erro ao excluir produto", apiErrorMessage(err));
+    }
   }
 
-  function toggleProduto(id: string) {
-    setProdutos((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, ativo: !p.ativo } : p))
-    );
+  function toggleProduto(produto: Produto) {
+    salvarProdutoMutation.mutate({
+      id: produto.id,
+      dados: { ...produto, ativo: !produto.ativo },
+    });
+  }
+
+  function reordenarProdutos(reordenados: Produto[]) {
+    reordenados.forEach((produto, i) => {
+      if (produto.ordem !== i + 1) {
+        salvarProdutoMutation.mutate({ id: produto.id, dados: { ...produto, ordem: i + 1 } });
+      }
+    });
+  }
+
+  function reordenarCategorias(reordenadas: Categoria[]) {
+    reordenadas.forEach((categoria, i) => {
+      if (categoria.ordem !== i + 1) {
+        salvarCategoriaMutation.mutate({
+          id: categoria.id,
+          dados: { nome: categoria.nome, descricao: categoria.descricao ?? "", ordem: i + 1 },
+        });
+      }
+    });
   }
 
   /* Produtos filtrados */
   const produtosFiltrados = produtos.filter(
     (p) => !categoriaFiltro || p.categoria_id === categoriaFiltro
   );
+
+  if (carregandoCategorias || carregandoProdutos) {
+    return (
+      <div className="flex justify-center py-16">
+        <Spinner />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-5">
@@ -182,22 +218,14 @@ export default function CardapioAdminPage() {
           ) : (
             <DragList
               items={produtosFiltrados}
-              onReorder={(reordered) =>
-                setProdutos((prev) => {
-                  const outros = prev.filter((p) => !reordered.some((r) => r.id === p.id));
-                  return [
-                    ...outros,
-                    ...reordered.map((p, i) => ({ ...p, ordem: i + 1 })),
-                  ];
-                })
-              }
+              onReorder={reordenarProdutos}
               renderItem={(produto, isDragging) => (
                 <ProdutoRow
                   produto={produto}
                   categoria={categorias.find((c) => c.id === produto.categoria_id)}
                   isDragging={isDragging}
                   onEditar={() => setModalProduto(produto)}
-                  onToggle={() => toggleProduto(produto.id)}
+                  onToggle={() => toggleProduto(produto)}
                 />
               )}
             />
@@ -225,9 +253,7 @@ export default function CardapioAdminPage() {
           ) : (
             <DragList
               items={categorias}
-              onReorder={(reordered) =>
-                setCategorias(reordered.map((c, i) => ({ ...c, ordem: i + 1 })))
-              }
+              onReorder={reordenarCategorias}
               renderItem={(categoria, isDragging) => (
                 <CategoriaRow
                   categoria={categoria}
@@ -236,7 +262,7 @@ export default function CardapioAdminPage() {
                   }
                   isDragging={isDragging}
                   onEditar={() => setModalCategoria(categoria)}
-                  onToggle={() => toggleCategoria(categoria.id)}
+                  onToggle={() => toggleCategoria(categoria)}
                 />
               )}
             />

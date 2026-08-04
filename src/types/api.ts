@@ -39,6 +39,8 @@ export interface CriarPedidoPayload {
     variacoes_ids?: string[];
   }[];
   observacao?: string;
+  nome_cliente?: string;
+  telefone_cliente?: string;
   endereco_entrega?: {
     logradouro: string;
     numero: string;

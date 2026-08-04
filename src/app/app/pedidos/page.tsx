@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { mockPedidos } from "@/lib/mock";
+import { usePedidos, useAtualizarStatus, useImprimir } from "@/lib/api/queries/orders";
+import { useSessionStore } from "@/lib/store/session";
 import { Pedido, OrderStatus } from "@/types/domain";
 import { Button } from "@/components/ui/Button";
+import { Spinner } from "@/components/ui/Spinner";
 import { formatBRL, formatarTempo } from "@/lib/utils";
 import { useOrders } from "@/lib/hooks/useOrders";
 import { toast } from "@/components/ui/Toast";
+import { apiErrorMessage } from "@/lib/api/client";
 
 type Filtro = "todos" | "pendente" | "em_preparo" | "pronto";
 
@@ -39,14 +42,19 @@ const acaoCor: Partial<Record<OrderStatus, string>> = {
 };
 
 export default function PedidosPage() {
+  const { usuario } = useSessionStore();
   const [filtroAtivo, setFiltroAtivo] = useState<Filtro>("todos");
   const [pedidoAberto, setPedidoAberto] = useState<Pedido | null>(null);
-  const [pedidos, setPedidos] = useState(mockPedidos);
+
+  const { data, isLoading } = usePedidos();
+  const atualizarStatus = useAtualizarStatus();
 
   const { isConnected } = useOrders({
-    restauranteId: "r1",
+    restauranteId: usuario?.restaurante_id ?? "",
     onNovoPedido: () => toast.info("Novo pedido!", "Verifique a fila."),
   });
+
+  const pedidos = data?.data ?? [];
 
   const filtrados = pedidos.filter((p) => {
     if (filtroAtivo === "todos") return !["entregue", "cancelado"].includes(p.status);
@@ -61,8 +69,21 @@ export default function PedidosPage() {
   function avancarStatus(pedido: Pedido) {
     const proximo = proximoStatus[pedido.status];
     if (!proximo) return;
-    setPedidos((prev) => prev.map((p) => (p.id === pedido.id ? { ...p, status: proximo } : p)));
-    toast.success("Status atualizado!");
+    atualizarStatus.mutate(
+      { id: pedido.id, status: proximo },
+      {
+        onSuccess: () => toast.success("Status atualizado!"),
+        onError: (err) => toast.error("Não foi possível atualizar", apiErrorMessage(err)),
+      }
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-16">
+        <Spinner />
+      </div>
+    );
   }
 
   return (
@@ -212,15 +233,17 @@ function KDSCard({
 }
 
 function PedidoModal({ pedido, onFechar, onAvancar }: { pedido: Pedido; onFechar: () => void; onAvancar: () => void }) {
-  const [loading, setLoading] = useState(false);
   const proximo = proximoStatus[pedido.status];
   const acao = acaoLabel[pedido.status];
+  const imprimir = useImprimir();
 
-  async function imprimir() {
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 800));
-    toast.success("Enviado para impressão!");
-    setLoading(false);
+  async function handleImprimir() {
+    try {
+      await imprimir.mutateAsync({ pedido_id: pedido.id });
+      toast.success("Enviado para impressão!");
+    } catch (err) {
+      toast.error("Não foi possível imprimir", apiErrorMessage(err));
+    }
   }
 
   return (
@@ -265,7 +288,7 @@ function PedidoModal({ pedido, onFechar, onAvancar }: { pedido: Pedido; onFechar
           {proximo && acao && (
             <Button theme="team" fullWidth onClick={onAvancar}>{acao}</Button>
           )}
-          <Button theme="team" variant="secondary" fullWidth loading={loading} onClick={imprimir}>
+          <Button theme="team" variant="secondary" fullWidth loading={imprimir.isPending} onClick={handleImprimir}>
             Imprimir comanda
           </Button>
           <button onClick={onFechar} className="text-sm text-neutral-400 hover:text-neutral-600 py-2">

@@ -2,12 +2,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { mockMesas, mockPedidos, mockRestaurante } from "@/lib/mock";
-import { Mesa, Pedido, TableStatus } from "@/types/domain";
+import { useSessionStore } from "@/lib/store/session";
+import { useMesas, useAbrirMesa, useAtualizarStatusMesa } from "@/lib/api/queries/mesas";
+import { usePedido } from "@/lib/api/queries/orders";
+import { Mesa, TableStatus } from "@/types/domain";
 import { TableStatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Spinner } from "@/components/ui/Spinner";
 import { FecharContaModal } from "@/components/team/FecharContaModal";
 import { toast } from "@/components/ui/Toast";
+import { apiErrorMessage } from "@/lib/api/client";
 
 const statusColors: Record<TableStatus, string> = {
   livre: "bg-green-50 border-green-200 hover:bg-green-100",
@@ -24,28 +28,35 @@ const statusTexto: Record<TableStatus, string> = {
 };
 
 export default function MesasPage() {
-  const [mesas, setMesas] = useState(mockMesas);
+  const { usuario } = useSessionStore();
+  const { data, isLoading } = useMesas();
+  const abrirMesa = useAbrirMesa();
+  const atualizarStatusMesa = useAtualizarStatusMesa();
+
   const [mesaSelecionada, setMesaSelecionada] = useState<Mesa | null>(null);
   const [fecharContaMesa, setFecharContaMesa] = useState<Mesa | null>(null);
+
+  const mesas = data?.data ?? [];
 
   const livres = mesas.filter((m) => m.status === "livre").length;
   const ocupadas = mesas.filter((m) => m.status === "ocupada").length;
   const contaPedida = mesas.filter((m) => m.status === "conta_pedida").length;
 
-  function atualizarStatus(id: string, status: TableStatus) {
-    setMesas((prev) => prev.map((m) => (m.id === id ? { ...m, status } : m)));
-  }
-
-  function onContaFechada(mesaId: string) {
-    atualizarStatus(mesaId, "livre");
+  function onContaFechada() {
     setFecharContaMesa(null);
     toast.success("Mesa liberada!", "A mesa está livre para novos clientes.");
   }
 
-  /* Pedido em aberto da mesa selecionada (mock) */
-  const pedidoDaMesa = fecharContaMesa
-    ? (mockPedidos.find((p) => p.mesa_id === fecharContaMesa.id) ?? mockPedidos[0])
-    : null;
+  const pedidoQuery = usePedido(fecharContaMesa?.pedido_aberto_id ?? "");
+  const pedidoDaMesa = fecharContaMesa ? pedidoQuery.data?.data : null;
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-16">
+        <Spinner />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-5">
@@ -90,14 +101,21 @@ export default function MesasPage() {
           mesa={mesaSelecionada}
           onFechar={() => setMesaSelecionada(null)}
           onAbrirMesa={(m) => {
-            atualizarStatus(m.id, "ocupada");
+            abrirMesa.mutate(m.id, {
+              onSuccess: () => toast.success(`Mesa ${m.numero} aberta!`),
+              onError: (err) => toast.error("Não foi possível abrir a mesa", apiErrorMessage(err)),
+            });
             setMesaSelecionada(null);
-            toast.success(`Mesa ${m.numero} aberta!`);
           }}
           onPedirConta={(m) => {
-            atualizarStatus(m.id, "conta_pedida");
+            atualizarStatusMesa.mutate(
+              { id: m.id, status: "conta_pedida" },
+              {
+                onSuccess: () => toast.info(`Conta solicitada — Mesa ${m.numero}`),
+                onError: (err) => toast.error("Não foi possível solicitar a conta", apiErrorMessage(err)),
+              }
+            );
             setMesaSelecionada(null);
-            toast.info(`Conta solicitada — Mesa ${m.numero}`);
           }}
           onFecharConta={(m) => {
             setMesaSelecionada(null);
@@ -111,7 +129,7 @@ export default function MesasPage() {
         <FecharContaModal
           mesa={fecharContaMesa}
           pedido={pedidoDaMesa}
-          restauranteNome={mockRestaurante.nome}
+          restauranteNome={usuario?.nome ?? "Pratto"}
           onFechar={() => setFecharContaMesa(null)}
           onContaFechada={onContaFechada}
         />

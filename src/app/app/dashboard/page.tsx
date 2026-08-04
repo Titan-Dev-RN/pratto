@@ -1,13 +1,23 @@
 "use client";
 
-import { mockDashboard } from "@/lib/mock";
+import { useDashboard } from "@/lib/api/queries/dashboard";
 import { OrderStatusBadge } from "@/components/ui/Badge";
+import { Spinner } from "@/components/ui/Spinner";
 import { formatBRL, formatarTempo } from "@/lib/utils";
 import { useSessionStore } from "@/lib/store/session";
 
 export default function DashboardPage() {
   const { usuario } = useSessionStore();
-  const kpis = mockDashboard;
+  const { data, isLoading } = useDashboard();
+  const kpis = data?.data;
+
+  if (isLoading || !kpis) {
+    return (
+      <div className="flex justify-center py-16">
+        <Spinner />
+      </div>
+    );
+  }
 
   const maxVenda = Math.max(...kpis.grafico_7dias.map((d) => d.total));
   const meta = 2500;
@@ -83,11 +93,11 @@ export default function DashboardPage() {
             className="absolute left-0 right-0 border-t-2 border-dashed border-teal-400 opacity-70 pointer-events-none z-10"
             style={{ bottom: `${(meta / escala) * 112}px` }}
           />
-          {kpis.grafico_7dias.map((dia) => {
+          {kpis.grafico_7dias.map((dia, i) => {
             const barPx = Math.max((dia.total / escala) * 96, 4); // 96 = área útil das barras
-            const isToday = dia.data === "Dom";
+            const isToday = i === kpis.grafico_7dias.length - 1;
             return (
-              <div key={dia.data} className="flex-1 flex flex-col items-center gap-1">
+              <div key={`${dia.data}-${i}`} className="flex-1 flex flex-col items-center gap-1">
                 <div
                   className={`w-full rounded-t-lg transition-all ${isToday ? "bg-team-500" : "bg-team-300"}`}
                   style={{ height: `${barPx}px` }}

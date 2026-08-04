@@ -12,6 +12,12 @@ export type OrderType = "mesa" | "delivery" | "balcao";
 
 export type TableStatus = "livre" | "ocupada" | "conta_pedida" | "reservada";
 
+export interface HorarioDia {
+  abertura: string;
+  fechamento: string;
+  aberto: boolean;
+}
+
 export interface Restaurante {
   id: string;
   slug: string;
@@ -19,6 +25,10 @@ export interface Restaurante {
   logo_url?: string;
   cor_primaria?: string;
   chave_pix?: string;
+  descricao?: string;
+  telefone?: string;
+  taxa_servico?: number;
+  horarios?: Record<string, HorarioDia>;
   ativo: boolean;
 }
 

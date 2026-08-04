@@ -9,7 +9,9 @@ import { formatBRL } from "@/lib/utils";
 import { toast } from "@/components/ui/Toast";
 import { MetodoPagamento, metodosPagamento } from "@/lib/pagamento";
 import { ResumoConfirmacao } from "@/components/pedido/ResumoConfirmacao";
-import { mockRestaurante } from "@/lib/mock";
+import { useRestaurante } from "@/lib/api/queries/menu";
+import { useCriarPedido } from "@/lib/api/queries/orders";
+import { apiErrorMessage } from "@/lib/api/client";
 import { ItemSacola } from "@/types/domain";
 
 type Step = "endereco" | "sacola" | "confirmado";
@@ -26,10 +28,11 @@ interface Endereco {
 export default function DeliveryPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const [step, setStep] = useState<Step>("endereco");
-  const [loading, setLoading] = useState(false);
   const [numeroPedido, setNumeroPedido] = useState<string | null>(null);
   const [pedidoId, setPedidoId] = useState<string | null>(null);
   const [pagamento, setPagamento] = useState<MetodoPagamento>("pix");
+  const [nomeCliente, setNomeCliente] = useState("");
+  const [telefoneCliente, setTelefoneCliente] = useState("");
   const [pedidoConfirmado, setPedidoConfirmado] = useState<{
     itens: ItemSacola[];
     total: number;
@@ -49,10 +52,17 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
   const totalSacola = getTotal();
   const qtd = quantidadeTotal();
 
+  const { data: restauranteData } = useRestaurante(slug);
+  const restaurante = restauranteData?.data;
+  const criarPedido = useCriarPedido(slug);
+  const loading = criarPedido.isPending;
+
   const setField = (k: keyof Endereco) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setEndereco((f) => ({ ...f, [k]: e.target.value }));
 
   const enderecoOk =
+    nomeCliente.trim() &&
+    telefoneCliente.trim() &&
     endereco.logradouro.trim() &&
     endereco.numero.trim() &&
     endereco.bairro.trim() &&
@@ -63,24 +73,28 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
     if (!itens.length) return;
     const itensPedido = itens;
     const totalPedido = itensPedido.reduce((acc, item) => acc + item.preco_total, 0);
-    setLoading(true);
     try {
-      /* Em produção: apiPost("/restaurantes/slug/pedidos", payload) */
-      await new Promise((r) => setTimeout(r, 1000));
-      const numero = String(Math.floor(Math.random() * 900) + 100);
-      const id = `ped-${Date.now()}`;
-      setNumeroPedido(numero);
-      setPedidoId(id);
+      const { data: pedido } = await criarPedido.mutateAsync({
+        tipo: "delivery",
+        nome_cliente: nomeCliente,
+        telefone_cliente: telefoneCliente,
+        endereco_entrega: endereco,
+        itens: itensPedido.map((item) => ({
+          produto_id: item.produto.id,
+          quantidade: item.quantidade,
+          observacao: item.observacao,
+        })),
+      });
+      setNumeroPedido(pedido.numero);
+      setPedidoId(pedido.id);
       setPedidoConfirmado({ itens: itensPedido, total: totalPedido, pagamento });
       limparSacola();
       setStep("confirmado");
-    } catch {
-      toast.error("Erro ao enviar pedido", "Tente novamente.", {
+    } catch (err) {
+      toast.error("Erro ao enviar pedido", apiErrorMessage(err), {
         label: "Tentar novamente",
         onClick: confirmarPedido,
       });
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -111,7 +125,7 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
               localDetalhe={`${endereco.logradouro}, ${endereco.numero}${
                 endereco.complemento ? ` - ${endereco.complemento}` : ""
               } — ${endereco.bairro}, ${endereco.cidade} — CEP ${endereco.cep}`}
-              chavePix={mockRestaurante.chave_pix ?? ""}
+              chavePix={restaurante?.chave_pix ?? ""}
             />
           )}
           <div className="flex flex-col gap-3 w-full max-w-xs">
@@ -165,7 +179,23 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
         {/* ─── Step 1: Endereço ─── */}
         {step === "endereco" && (
           <div className="bg-white rounded-2xl p-5 shadow-sm flex flex-col gap-4">
-            <h2 className="font-semibold text-neutral-900">Endereço de entrega</h2>
+            <h2 className="font-semibold text-neutral-900">Seus dados</h2>
+            <Input
+              label="Nome"
+              placeholder="Seu nome completo"
+              value={nomeCliente}
+              onChange={(e) => setNomeCliente(e.target.value)}
+              theme="coral"
+            />
+            <Input
+              label="Telefone / WhatsApp"
+              placeholder="(11) 99999-9999"
+              value={telefoneCliente}
+              onChange={(e) => setTelefoneCliente(e.target.value)}
+              inputMode="tel"
+              theme="coral"
+            />
+            <h2 className="font-semibold text-neutral-900 pt-2 border-t border-neutral-100">Endereço de entrega</h2>
             <Input
               label="CEP"
               placeholder="00000000"

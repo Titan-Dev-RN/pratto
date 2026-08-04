@@ -5,6 +5,9 @@ import { Mesa, Pedido } from "@/types/domain";
 import { Button } from "@/components/ui/Button";
 import { formatBRL, formatarHora } from "@/lib/utils";
 import { toast } from "@/components/ui/Toast";
+import { useFecharMesa } from "@/lib/api/queries/mesas";
+import { useImprimir } from "@/lib/api/queries/orders";
+import { apiErrorMessage } from "@/lib/api/client";
 
 type Pagamento = "dinheiro" | "credito" | "debito" | "pix";
 
@@ -29,8 +32,10 @@ export function FecharContaModal({ mesa, pedido, restauranteNome, onFechar, onCo
   const [step, setStep] = useState<Step>("pagamento");
   const [formaPagamento, setFormaPagamento] = useState<Pagamento | null>(null);
   const [valorRecebido, setValorRecebido] = useState("");
-  const [loading, setLoading] = useState(false);
   const cupomRef = useRef<HTMLDivElement>(null);
+
+  const fecharMesa = useFecharMesa();
+  const imprimir = useImprimir();
 
   const total = pedido.total;
   const troco =
@@ -40,21 +45,21 @@ export function FecharContaModal({ mesa, pedido, restauranteNome, onFechar, onCo
 
   async function confirmarFechamento() {
     if (!formaPagamento) return;
-    setLoading(true);
     try {
-      /* Em produção: apiPost("/pedidos/id/fechar", { forma_pagamento }) */
-      await new Promise((r) => setTimeout(r, 700));
+      await fecharMesa.mutateAsync({ id: mesa.id, forma_pagamento: formaPagamento });
       setStep("cupom");
-    } catch {
-      toast.error("Erro ao fechar conta", "Tente novamente.");
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      toast.error("Erro ao fechar conta", apiErrorMessage(err));
     }
   }
 
-  function imprimirCupom() {
-    /* Em produção: POST /impressao com pedido_id → back aciona impressora térmica */
-    toast.success("Enviado para impressão!", "Cupom impresso com sucesso.");
+  async function imprimirCupom() {
+    try {
+      await imprimir.mutateAsync({ pedido_id: pedido.id });
+      toast.success("Enviado para impressão!", "Cupom impresso com sucesso.");
+    } catch (err) {
+      toast.error("Não foi possível imprimir", apiErrorMessage(err));
+    }
     onContaFechada(mesa.id);
   }
 
@@ -162,7 +167,7 @@ export function FecharContaModal({ mesa, pedido, restauranteNome, onFechar, onCo
                 theme="team"
                 fullWidth
                 size="lg"
-                loading={loading}
+                loading={fecharMesa.isPending}
                 disabled={
                   !formaPagamento ||
                   (formaPagamento === "dinheiro" && troco !== null && troco < 0)

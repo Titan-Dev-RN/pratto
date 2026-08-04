@@ -3,12 +3,15 @@
 import { Suspense, useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
-import { mockCategorias, mockProdutos } from "@/lib/mock";
+import { useCategoriasAdmin, useProdutosAdmin } from "@/lib/api/queries/menu";
+import { useCriarPedidoEquipe } from "@/lib/api/queries/orders";
 import { Produto } from "@/types/domain";
 import { useComandaStore } from "@/lib/store/comanda";
 import { Button } from "@/components/ui/Button";
+import { Spinner } from "@/components/ui/Spinner";
 import { formatBRL } from "@/lib/utils";
 import { toast } from "@/components/ui/Toast";
+import { apiErrorMessage } from "@/lib/api/client";
 
 export default function NovoPedidoPage() {
   return (
@@ -28,7 +31,6 @@ function NovoPedidoContent() {
   const [categoriaAtiva, setCategoriaAtiva] = useState<string | null>(null);
   const [produtoModal, setProdutoModal] = useState<Produto | null>(null);
   const [comandaAberta, setComandaAberta] = useState(false);
-  const [loading, setLoading] = useState(false);
 
   const {
     itens,
@@ -45,8 +47,12 @@ function NovoPedidoContent() {
     if (mesaId) setMesa(mesaId, mesaNumero);
   }, [mesaId, mesaNumero, setMesa]);
 
-  const categorias = mockCategorias;
-  const produtos = mockProdutos;
+  const { data: categoriasData, isLoading: carregandoCategorias } = useCategoriasAdmin();
+  const { data: produtosData, isLoading: carregandoProdutos } = useProdutosAdmin();
+  const criarPedido = useCriarPedidoEquipe();
+
+  const categorias = categoriasData?.data ?? [];
+  const produtos = produtosData?.data ?? [];
 
   const produtosFiltrados = produtos.filter((p) => {
     const matchCat = !categoriaAtiva || p.categoria_id === categoriaAtiva;
@@ -62,18 +68,32 @@ function NovoPedidoContent() {
 
   async function enviarPedido() {
     if (!itens.length) return;
-    setLoading(true);
     try {
-      /* Em produção: useCriarPedido(slug).mutateAsync({ mesa_id: mesaId, tipo: "mesa", itens }) */
-      await new Promise((r) => setTimeout(r, 800));
+      await criarPedido.mutateAsync({
+        mesa_id: mesaId || undefined,
+        tipo: mesaId ? "mesa" : "balcao",
+        itens: itens.map((item) => ({
+          produto_id: item.produto.id,
+          quantidade: item.quantidade,
+          observacao: item.observacao,
+        })),
+      });
       toast.success("Pedido enviado!", `Mesa ${mesaNumero} — ${itens.length} item(s) para o balcão.`);
       limpar();
       router.push("/app/mesas");
-    } catch {
-      toast.error("Erro ao enviar pedido", "Verifique a conexão e tente novamente.");
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      toast.error("Erro ao enviar pedido", apiErrorMessage(err, "Verifique a conexão e tente novamente."));
     }
+  }
+
+  const loading = criarPedido.isPending;
+
+  if (carregandoCategorias || carregandoProdutos) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <Spinner />
+      </div>
+    );
   }
 
   return (

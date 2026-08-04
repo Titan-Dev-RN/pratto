@@ -3,7 +3,8 @@
 import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { mockRestaurante } from "@/lib/mock";
+import { useRestaurante } from "@/lib/api/queries/menu";
+import { Spinner } from "@/components/ui/Spinner";
 
 type Modo = "escolha" | "mesa";
 
@@ -15,7 +16,8 @@ export default function RestaurantePage({ params }: { params: Promise<{ slug: st
   const [mesa, setMesa] = useState("");
   const [erro, setErro] = useState("");
 
-  const restaurante = mockRestaurante;
+  const { data, isLoading } = useRestaurante(slug);
+  const restaurante = data?.data;
 
   function confirmarMesa() {
     const num = mesa.trim();
@@ -24,6 +26,14 @@ export default function RestaurantePage({ params }: { params: Promise<{ slug: st
       return;
     }
     router.push(`/${slug}/menu?mesa=${num}`);
+  }
+
+  if (isLoading || !restaurante) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Spinner />
+      </div>
+    );
   }
 
   return (
