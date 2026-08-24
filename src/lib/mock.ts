@@ -1,4 +1,15 @@
-import { Categoria, DashboardKPI, Mesa, Pedido, Produto, Restaurante } from "@/types/domain";
+/* Dados de demonstração — não utilizados em produção desde a migração
+   para a API real (ver plano de integração). Mantido só como referência
+   de shapes para as páginas públicas do cliente, que continuam mock
+   (checkout do cliente pausado — ver Fase 7 do plano). */
+import {
+  CategoriaLegacy as Categoria,
+  DashboardKPILegacy as DashboardKPI,
+  MesaLegacy as Mesa,
+  PedidoLegacy as Pedido,
+  ProdutoLegacy as Produto,
+  RestauranteLegacy as Restaurante,
+} from "@/types/domain.legacy";
 
 export const mockRestaurante: Restaurante = {
   id: "r1",

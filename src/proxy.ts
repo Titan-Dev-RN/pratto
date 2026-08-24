@@ -1,9 +1,20 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED = ["/app", "/admin"];
+const PROTECTED = ["/app"];
 
-/* Painéis com dados sensíveis (faturamento etc.) — só admin/superadmin, mesmo digitando a URL direto */
-const ADMIN_ONLY_APP_PATHS = ["/app/dashboard", "/app/cardapio", "/app/config"];
+/* Painéis com dados sensíveis (faturamento etc.) — só admin, mesmo digitando a URL direto */
+const ADMIN_ONLY_APP_PATHS = ["/app/dashboard", "/app/cardapio", "/app/config", "/app/cupons"];
+
+/* Fluxo de salão (mesas, PDV) — entregador e cozinha não têm essa
+   permissão (cozinha só visualiza os pedidos que chegam, não abre mesa
+   nem lança pedido; ver Cozinha #4 nos problemas relatados) */
+const SALAO_ONLY_APP_PATHS = ["/app/mesas", "/app/pedidos/novo"];
+const SEM_SALAO_ROLES = ["entregador", "cozinha"];
+
+function destinoPadrao(role: string | undefined, request: NextRequest) {
+  if (role === "entregador") return new URL("/app/entregas", request.url);
+  return new URL("/app/pedidos", request.url);
+}
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -21,17 +32,17 @@ export function proxy(request: NextRequest) {
 
   const role = request.cookies.get("pratto_role")?.value;
 
-  /* Token super-admin só em /admin */
-  if (pathname.startsWith("/admin")) {
-    if (role !== "superadmin") {
-      return NextResponse.redirect(new URL("/app/pedidos", request.url));
+  /* Garçom/caixa/cozinha não acessam painéis administrativos, nem digitando a URL */
+  if (ADMIN_ONLY_APP_PATHS.some((p) => pathname.startsWith(p))) {
+    if (role !== "admin") {
+      return NextResponse.redirect(destinoPadrao(role, request));
     }
   }
 
-  /* Garçom/caixa não acessam painéis administrativos, nem digitando a URL */
-  if (ADMIN_ONLY_APP_PATHS.some((p) => pathname.startsWith(p))) {
-    if (role !== "admin" && role !== "superadmin") {
-      return NextResponse.redirect(new URL("/app/pedidos", request.url));
+  /* Entregador e cozinha não têm permissão de salão (mesas/PDV) */
+  if (SALAO_ONLY_APP_PATHS.some((p) => pathname.startsWith(p))) {
+    if (SEM_SALAO_ROLES.includes(role ?? "")) {
+      return NextResponse.redirect(destinoPadrao(role, request));
     }
   }
 
@@ -39,5 +50,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/app/:path*", "/admin/:path*"],
+  matcher: ["/app/:path*"],
 };

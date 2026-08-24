@@ -11,10 +11,10 @@ export default function HomePage() {
 
       <div className="flex flex-col sm:flex-row gap-3 w-full max-w-xs">
         <Link
-          href="/tacos/menu"
+          href="/tacos"
           className="flex-1 bg-coral-500 hover:bg-coral-600 text-white font-semibold px-5 py-3 rounded-xl transition-colors text-sm"
         >
-          Demo cardápio →
+          Ver cardápio →
         </Link>
         <Link
           href="/login"

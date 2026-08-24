@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useSessionStore } from "@/lib/store/session";
 import { useOrders } from "@/lib/hooks/useOrders";
+import { useMounted } from "@/lib/hooks/useMounted";
 import { toast } from "@/components/ui/Toast";
 
 const navItems = [
@@ -22,7 +23,7 @@ const navItems = [
   {
     href: "/app/mesas",
     label: "Mesas",
-    roles: [] as string[],
+    roles: ["garcom", "caixa", "admin"],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
         <rect x="3" y="3" width="8" height="8" rx="1" />
@@ -33,9 +34,22 @@ const navItems = [
     ),
   },
   {
+    href: "/app/entregas",
+    label: "Entregas",
+    roles: ["entregador", "admin"],
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+        <rect x="1" y="3" width="15" height="13" rx="1" />
+        <path d="M16 8h4l3 3v5h-7V8z" />
+        <circle cx="5.5" cy="18.5" r="2.5" />
+        <circle cx="18.5" cy="18.5" r="2.5" />
+      </svg>
+    ),
+  },
+  {
     href: "/app/dashboard",
     label: "Painel",
-    roles: ["admin", "superadmin"],
+    roles: ["admin"],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
         <path d="M18 20V10M12 20V4M6 20v-6" />
@@ -45,7 +59,7 @@ const navItems = [
   {
     href: "/app/cardapio",
     label: "Cardápio",
-    roles: ["admin", "superadmin"],
+    roles: ["admin"],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
         <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" />
@@ -54,9 +68,19 @@ const navItems = [
     ),
   },
   {
+    href: "/app/cupons",
+    label: "Cupons",
+    roles: ["admin"],
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+        <path d="M9 5H4a1 1 0 00-1 1v4a2 2 0 010 4v4a1 1 0 001 1h5M9 5h11a1 1 0 011 1v4a2 2 0 000 4v4a1 1 0 01-1 1H9M9 5v14" />
+      </svg>
+    ),
+  },
+  {
     href: "/app/config",
     label: "Config",
-    roles: ["admin", "superadmin"],
+    roles: ["admin"],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
         <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" />
@@ -70,9 +94,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { usuario, clearSession, hasRole } = useSessionStore();
+  /* Sessão vem de localStorage (zustand persist) — no SSR "usuario" é
+     sempre null, então o menu por papel só pode usar o valor real depois
+     de montar no cliente, senão diverge do HTML do servidor. */
+  const mounted = useMounted();
 
   useOrders({
-    restauranteId: usuario?.restaurante_id ?? "r1",
     onNovoPedido: () => toast.info("Novo pedido!", "Um novo pedido chegou."),
   });
 
@@ -83,10 +110,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     router.push("/login");
   }
 
-  const isAdmin = hasRole(["admin", "superadmin"]);
+  const isAdmin = mounted && hasRole("admin");
 
   const visibleNav = navItems.filter((item) =>
-    item.roles.length === 0 || item.roles.some((r) => hasRole(r as "garcom" | "caixa" | "admin" | "superadmin"))
+    item.roles.length === 0 ||
+    (mounted && item.roles.some((r) => hasRole(r as "garcom" | "caixa" | "cozinha" | "admin" | "entregador")))
   );
 
   return (
@@ -109,9 +137,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-3">
           <Link href="/app/perfil" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <div className="w-7 h-7 rounded-full bg-team-500 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
-              {(usuario?.nome ?? "U").charAt(0).toUpperCase()}
+              {(mounted ? usuario?.nome : undefined)?.charAt(0).toUpperCase() ?? "U"}
             </div>
-            <span className="text-team-300 text-sm hidden sm:block truncate max-w-28">{usuario?.nome ?? "Equipe"}</span>
+            <span className="text-team-300 text-sm hidden sm:block truncate max-w-28">
+              {(mounted ? usuario?.nome : undefined) ?? "Equipe"}
+            </span>
           </Link>
           <button
             onClick={handleLogout}

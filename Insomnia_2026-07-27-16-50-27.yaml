@@ -1,0 +1,805 @@
+type: collection.insomnia.rest/5.0
+schema_version: "5.1"
+name: atendimento
+meta:
+  id: wrk_c7f2880731b64e15805227defb046c6c
+  created: 1783518316686
+  modified: 1783547413068
+  description: ""
+collection:
+  - url: "{{ _.URL_TESTE }}cliente/autenticacao/login"
+    name: LOGIN
+    meta:
+      id: req_b4842f89f4644c5a91be3e15d06119d3
+      created: 1783518326643
+      modified: 1783547507750
+      isPrivate: false
+      description: ""
+      sortKey: -1783518326643
+    method: POST
+    body:
+      mimeType: application/json
+      text: |-
+        {
+          "email": "carlos@saborosa.com.br",
+          "senha": "SenhaSegura123"
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - name: Admin
+    meta:
+      id: fld_46abc77b8fd048599d22f4fc875f0e4a
+      created: 1784676530137
+      modified: 1784676530137
+      sortKey: -1784676530138
+      description: ""
+    children:
+      - url: http://localhost:3000/api/users
+        name: Listar usuarios
+        meta:
+          id: req_fa90d33bec52433f943ed729d83752c1
+          created: 1784676530150
+          modified: 1785180928430
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530150
+        method: GET
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/users
+        name: Criar usuario
+        meta:
+          id: req_85dc4ab939954bbb9ac9a6218954f24a
+          created: 1784676530154
+          modified: 1785180935784
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530154
+        method: POST
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "name": "Joao Atendente",
+              "email": "joao@restaurante.com",
+              "password": "senha_segura_123",
+              "role": "atendente"
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/users/1
+        name: Detalhar usuario
+        meta:
+          id: req_b000560f1fc74369ad79964a3fb429a6
+          created: 1784676530156
+          modified: 1785180946779
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530156
+        method: GET
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/users/1
+        name: Atualizar usuario
+        meta:
+          id: req_665ef4a17b344813aa5aa69209516ec5
+          created: 1784676530158
+          modified: 1785180971159
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530158
+        method: PUT
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "name": "Joao Atendente",
+              "email": "joao@restaurante.com",
+              "role": "atendente"
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/users/1
+        name: Inativar usuario
+        meta:
+          id: req_1f0ae2544c044b67b2c4f56c1707cf62
+          created: 1784676530160
+          modified: 1785180985672
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530160
+        method: DELETE
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/tables
+        name: Listar mesas
+        meta:
+          id: req_f527aa040e044b33ad3fbc505f1df86f
+          created: 1784676530161
+          modified: 1785180996908
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530161
+        method: GET
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/tables
+        name: Cadastrar mesa
+        meta:
+          id: req_7d858487b5074fd692fb2a08355c9720
+          created: 1784676530163
+          modified: 1785181006029
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530163
+        method: POST
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "number": 12,
+              "description": "Mesa proxima a janela"
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/tables/1
+        name: Detalhar mesa
+        meta:
+          id: req_a84ecf6ea9ae48a58e9d27be2a099ddf
+          created: 1784676530165
+          modified: 1785181014142
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530165
+        method: GET
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/tables/1
+        name: Atualizar mesa
+        meta:
+          id: req_2585781f25d644099db563c4301cbf88
+          created: 1784676530167
+          modified: 1785181029435
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530167
+        method: PUT
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "number": 12,
+              "description": "Mesa proxima a janela"
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/tables/1
+        name: Inativar mesa
+        meta:
+          id: req_9bf1a91978714c9e8d196086d85efd39
+          created: 1784676530168
+          modified: 1785181043082
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530168
+        method: DELETE
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/products
+        name: Listar produtos
+        meta:
+          id: req_fd566e923ea94c1492616c679642e145
+          created: 1784676530170
+          modified: 1785181051032
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530170
+        method: GET
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/products
+        name: Cadastrar produto
+        meta:
+          id: req_69dccc8d3b3a4af384cc644ea78db46d
+          created: 1784676530171
+          modified: 1785181060070
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530171
+        method: POST
+        body:
+          mimeType: application/json
+          text: >-
+            {
+              "name": "X-Bacon Especial",
+              "description": "Hamburguer artesanal 200g, queijo prato, bacon rustico e molho da casa.",
+              "price": 35.9,
+              "active": true
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/products/10
+        name: Detalhar produto
+        meta:
+          id: req_b454aae3fd7e4c60bf8a8eabdb355b18
+          created: 1784676530173
+          modified: 1785181067327
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530173
+        method: GET
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/products/10
+        name: Atualizar produto
+        meta:
+          id: req_9c140c83c3854e1482a99f09f9e28abb
+          created: 1784676530175
+          modified: 1785181075254
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530175
+        method: PUT
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "exibir_na_vitrine": true
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/products/10
+        name: Inativar produto
+        meta:
+          id: req_ac2ed94a9ec74b0f98510760ab5c439c
+          created: 1784676530176
+          modified: 1785181333646
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530176
+        method: DELETE
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+  - name: Atendimento
+    meta:
+      id: fld_5b4ae190f0ce4f6bb3eea4cb83509f2f
+      created: 1784676530142
+      modified: 1784676530142
+      sortKey: -1784676530142
+      description: ""
+    children:
+      - url: http://localhost:3000/api/commands
+        name: Abrir comanda
+        meta:
+          id: req_a54e8f463bd5410a9a1355a41cb54e6d
+          created: 1784676530178
+          modified: 1785180876997
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530178
+        method: POST
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "table_id": 3,
+              "attendant_id": 1
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/commands/50
+        name: Consultar comanda
+        meta:
+          id: req_19ea3a2567624544ab50cc478b55d9bf
+          created: 1784676530179
+          modified: 1785180887626
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530179
+        method: GET
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/commands/50/items
+        name: Adicionar item na comanda
+        meta:
+          id: req_10c0e51992dc4d37b740e6175309ee52
+          created: 1784676530181
+          modified: 1785181347152
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530181
+        method: POST
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "product_id": 10,
+              "quantity": 2,
+              "notes": "Sem cebola"
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/commands/50/items/120
+        name: Cancelar item da comanda
+        meta:
+          id: req_ae3a507e922340728382a39613fccc1e
+          created: 1784676530183
+          modified: 1785181356794
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530183
+        method: DELETE
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+  - name: Cozinha
+    meta:
+      id: fld_cd4b0f3c895d4ad2832f75aeddd87656
+      created: 1784676530144
+      modified: 1784676530144
+      sortKey: -1784676530144
+      description: ""
+    children:
+      - url: http://localhost:3000/api/kitchen/orders?status=pendente
+        name: Consultar pedidos da cozinha
+        meta:
+          id: req_7e9653fef5b54f2488654e165efb9c08
+          created: 1784676530185
+          modified: 1785181380654
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530185
+        method: GET
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/kitchen/orders/120/status
+        name: Atualizar status do pedido
+        meta:
+          id: req_d73fa58219e9496593dcb4a8b93d9af0
+          created: 1784676530187
+          modified: 1785181371863
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530187
+        method: PATCH
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "status": "em_andamento"
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+  - name: Relatorios
+    meta:
+      id: fld_5245c22b5b3147f3bd18734abbd6a2c2
+      created: 1784676530145
+      modified: 1784676530145
+      sortKey: -1784676530145
+      description: ""
+    children:
+      - url: http://localhost:3000/api/reports/sales?data_inicial=2026-06-19T00:00:00.000Z&data_final=2026-07-19T23:59:59.999Z
+        name: Relatorio financeiro
+        meta:
+          id: req_55a0a330723f40a7987f0d0556fffa7b
+          created: 1784676530188
+          modified: 1785181404361
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530188
+        method: GET
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+  - name: Delivery Publico
+    meta:
+      id: fld_9bd38c0764bb47bf9fabaedc2a0911eb
+      created: 1784676530147
+      modified: 1784676530147
+      sortKey: -1784676530147
+      description: ""
+    children:
+      - url: http://localhost:3000/api/public/storefront/lanches-do-ze/products
+        name: Listar vitrine
+        meta:
+          id: req_be8e90da598b44ed8d13960ebb80a314
+          created: 1784676530190
+          modified: 1785181417751
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530190
+        method: GET
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/public/storefront/lanches-do-ze/orders
+        name: Fazer pedido delivery
+        meta:
+          id: req_6a6bd7978a2c4edca9bb4bf036909fd6
+          created: 1784676530191
+          modified: 1785181426610
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530191
+        method: POST
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "nome_cliente": "Maria Silva",
+              "telefone_cliente": "11999998888",
+              "endereco_entrega": "Rua das Flores, 123 - Apto 42",
+              "items": [
+                {
+                  "product_id": 10,
+                  "quantity": 2,
+                  "observacao": "Sem cebola"
+                }
+              ]
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/public/orders/A7X9KL2P
+        name: Rastrear pedido
+        meta:
+          id: req_0f73e08f4179462697a59df2a2054472
+          created: 1784676530193
+          modified: 1785181435085
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530193
+        method: GET
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/delivery_orders
+        name: Listar pedidos delivery
+        meta:
+          id: req_5019ccbea2f74971a5b1dc147d461539
+          created: 1784676530195
+          modified: 1785181443322
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530195
+        method: GET
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: http://localhost:3000/api/delivery_orders/1/status
+        name: Atualizar status delivery
+        meta:
+          id: req_7b517616596c4b5d984f83503b967930
+          created: 1784676530196
+          modified: 1785181452210
+          isPrivate: false
+          description: ""
+          sortKey: -1784676530196
+        method: PATCH
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "status_delivery": "saiu_para_entrega"
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+        authentication:
+          type: bearer
+          token: "{{token}}"
+          prefix: Bearer
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+cookieJar:
+  name: Default Jar
+  meta:
+    id: jar_56814917cacd26c3b68cc49bd8671c2aa4f07ac1
+    created: 1783547413233
+    modified: 1783547413233
+environments:
+  name: Base Environment
+  meta:
+    id: env_56814917cacd26c3b68cc49bd8671c2aa4f07ac1
+    created: 1783518316687
+    modified: 1783547413067
+    isPrivate: false

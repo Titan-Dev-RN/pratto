@@ -3,41 +3,51 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
+/* Canal de tempo real (Action Cable) — não confirmado no contrato de API
+   recebido do backend. O hook tenta conectar de forma best-effort; se não
+   houver servidor de WebSocket, ele falha silenciosamente e tenta de novo
+   a cada 5s. A lista de pedidos/mesas já se mantém atualizada via
+   refetchInterval e invalidação após mutações, então esse hook é só um
+   "bônus" de atualização mais rápida quando/se o backend oferecer o canal. */
+
 interface UseOrdersOptions {
-  restauranteId: string;
   onNovoPedido?: (pedido: unknown) => void;
   onStatusAtualizado?: (pedido: unknown) => void;
 }
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:3001/cable";
 
-export function useOrders({ restauranteId, onNovoPedido, onStatusAtualizado }: UseOrdersOptions) {
+export function useOrders({ onNovoPedido, onStatusAtualizado }: UseOrdersOptions = {}) {
   const qc = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /* Guarda a versão mais recente de `connect` num ref pra poder chamá-la
+     recursivamente (reconexão) sem referenciar a própria const antes de
+     ela ser declarada. */
+  const connectRef = useRef<() => void>(() => {});
 
   const invalidate = useCallback(() => {
-    qc.invalidateQueries({ queryKey: ["pedidos", restauranteId] });
-    qc.invalidateQueries({ queryKey: ["mesas", restauranteId] });
-  }, [qc, restauranteId]);
+    qc.invalidateQueries({ queryKey: ["kitchen-orders"] });
+    qc.invalidateQueries({ queryKey: ["mesas"] });
+    qc.invalidateQueries({ queryKey: ["comanda"] });
+  }, [qc]);
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     const token = typeof window !== "undefined" ? localStorage.getItem("pratto_token") : null;
-    const url = token ? `${WS_URL}?token=${token}` : WS_URL;
+    if (!token) return; // sem sessão, não tenta conectar
+
+    const url = `${WS_URL}?token=${token}`;
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      /* Assina o canal de pedidos do restaurante via Action Cable */
+      /* Assina o canal de pedidos, caso exista no backend */
       ws.send(
         JSON.stringify({
           command: "subscribe",
-          identifier: JSON.stringify({
-            channel: "PedidosChannel",
-            restaurante_id: restauranteId,
-          }),
+          identifier: JSON.stringify({ channel: "PedidosChannel" }),
         })
       );
     };
@@ -55,7 +65,7 @@ export function useOrders({ restauranteId, onNovoPedido, onStatusAtualizado }: U
           onNovoPedido?.(payload.pedido);
         } else if (payload.event === "status_atualizado") {
           invalidate();
-          qc.invalidateQueries({ queryKey: ["pedido", payload.pedido?.id] });
+          qc.invalidateQueries({ queryKey: ["comanda", payload.pedido?.id] });
           onStatusAtualizado?.(payload.pedido);
         }
       } catch {
@@ -64,12 +74,15 @@ export function useOrders({ restauranteId, onNovoPedido, onStatusAtualizado }: U
     };
 
     ws.onclose = () => {
-      /* Reconecta em 5s se fechou inesperadamente */
-      reconnectTimer.current = setTimeout(connect, 5_000);
+      reconnectTimer.current = setTimeout(() => connectRef.current(), 5_000);
     };
 
     ws.onerror = () => ws.close();
-  }, [restauranteId, invalidate, onNovoPedido, onStatusAtualizado, qc]);
+  }, [invalidate, onNovoPedido, onStatusAtualizado, qc]);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   useEffect(() => {
     connect();

@@ -1,83 +1,58 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Categoria, Produto } from "@/types/domain";
+import { useState } from "react";
+import { Produto } from "@/types/domain";
+import { CriarProdutoPayload } from "@/types/api";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 
 interface Props {
   produto?: Produto | null;
-  categorias: Categoria[];
-  onSalvar: (dados: Omit<Produto, "id" | "restaurante_id">) => void;
+  onSalvar: (dados: CriarProdutoPayload) => void;
   onFechar: () => void;
   onExcluir?: () => void;
+  salvando?: boolean;
 }
 
 type FormState = {
   nome: string;
   descricao: string;
   preco: string;
-  categoria_id: string;
-  foto_url: string;
+  imagem: string;
   ativo: boolean;
 };
 
-export function ProdutoFormModal({ produto, categorias, onSalvar, onFechar, onExcluir }: Props) {
+/* O componente que renderiza este modal deve passar uma `key` (ex: produto?.id ?? "novo")
+   pra garantir que o formulário reinicie ao trocar de produto — sem isso, o estado
+   interno não se atualiza sozinho quando a prop `produto` muda. */
+export function ProdutoFormModal({ produto, onSalvar, onFechar, onExcluir, salvando }: Props) {
   const isEditing = !!produto;
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(produto?.foto_url ?? null);
 
   const [form, setForm] = useState<FormState>({
     nome: produto?.nome ?? "",
     descricao: produto?.descricao ?? "",
     preco: produto ? String(produto.preco) : "",
-    categoria_id: produto?.categoria_id ?? categorias[0]?.id ?? "",
-    foto_url: produto?.foto_url ?? "",
+    imagem: produto?.foto_url ?? "",
     ativo: produto?.ativo ?? true,
   });
 
-  useEffect(() => {
-    setForm({
-      nome: produto?.nome ?? "",
-      descricao: produto?.descricao ?? "",
-      preco: produto ? String(produto.preco) : "",
-      categoria_id: produto?.categoria_id ?? categorias[0]?.id ?? "",
-      foto_url: produto?.foto_url ?? "",
-      ativo: produto?.ativo ?? true,
-    });
-    setPreviewUrl(produto?.foto_url ?? null);
-    setConfirmDelete(false);
-  }, [produto, categorias]);
-
-  const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+  const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
-
-  function handleFotoChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
-    /* Em produção: upload para storage e salvar a URL real */
-    setForm((f) => ({ ...f, foto_url: url }));
-  }
 
   function handleSalvar() {
     const preco = parseFloat(form.preco.replace(",", "."));
-    if (!form.nome.trim() || isNaN(preco) || !form.categoria_id) return;
+    if (!form.nome.trim() || isNaN(preco)) return;
     onSalvar({
-      nome: form.nome.trim(),
-      descricao: form.descricao.trim(),
-      preco,
-      categoria_id: form.categoria_id,
-      foto_url: form.foto_url || undefined,
-      ativo: form.ativo,
-      ordem: produto?.ordem ?? 0,
-      grupos: produto?.grupos ?? [],
+      name: form.nome.trim(),
+      description: form.descricao.trim() || undefined,
+      price: preco,
+      foto_url: form.imagem.trim() || undefined,
+      active: form.ativo,
     });
   }
 
-  const valido = form.nome.trim() && form.preco && form.categoria_id;
+  const valido = form.nome.trim() && form.preco;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" onClick={onFechar}>
@@ -105,43 +80,27 @@ export function ProdutoFormModal({ produto, categorias, onSalvar, onFechar, onEx
         </div>
 
         <div className="overflow-y-auto flex-1 p-5 flex flex-col gap-4">
-          {/* Foto */}
+          {/* Imagem */}
           <div>
             <label className="text-sm font-medium text-neutral-700 block mb-2">Foto do produto</label>
-            <div
-              className="relative w-full h-36 rounded-2xl bg-neutral-100 border-2 border-dashed border-neutral-300 overflow-hidden cursor-pointer hover:border-team-400 transition-colors flex items-center justify-center"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {previewUrl ? (
+            <div className="relative w-full h-36 rounded-2xl bg-neutral-100 border-2 border-dashed border-neutral-300 overflow-hidden flex items-center justify-center">
+              {form.imagem ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
+                <img src={form.imagem} alt="Preview" className="w-full h-full object-cover" />
               ) : (
                 <div className="text-center">
                   <p className="text-3xl">📷</p>
-                  <p className="text-xs text-neutral-400 mt-1">Clique para adicionar foto</p>
-                </div>
-              )}
-              {previewUrl && (
-                <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                  <span className="text-white text-sm font-medium">Trocar foto</span>
+                  <p className="text-xs text-neutral-400 mt-1">Cole a URL da imagem abaixo</p>
                 </div>
               )}
             </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleFotoChange}
+            <Input
+              placeholder="https://..."
+              value={form.imagem}
+              onChange={set("imagem")}
+              theme="team"
+              className="mt-2"
             />
-            {previewUrl && (
-              <button
-                className="text-xs text-neutral-400 hover:text-red-500 mt-1"
-                onClick={() => { setPreviewUrl(null); setForm((f) => ({ ...f, foto_url: "" })); }}
-              >
-                Remover foto
-              </button>
-            )}
           </div>
 
           <Input
@@ -157,36 +116,22 @@ export function ProdutoFormModal({ produto, categorias, onSalvar, onFechar, onEx
             label="Descrição"
             placeholder="Ingredientes, modo de preparo, destaques..."
             value={form.descricao}
-            onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))}
+            onChange={set("descricao")}
             theme="team"
           />
 
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Preço (R$)"
-              placeholder="0,00"
-              value={form.preco}
-              onChange={set("preco")}
-              inputMode="decimal"
-              theme="team"
-            />
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-neutral-700">Categoria</label>
-              <select
-                value={form.categoria_id}
-                onChange={set("categoria_id")}
-                className="w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-neutral-900 focus:outline-none focus:ring-2 focus:ring-team-500 focus:border-team-500 transition"
-              >
-                {categorias.map((c) => (
-                  <option key={c.id} value={c.id}>{c.nome}</option>
-                ))}
-              </select>
-            </div>
-          </div>
+          <Input
+            label="Preço (R$)"
+            placeholder="0,00"
+            value={form.preco}
+            onChange={set("preco")}
+            inputMode="decimal"
+            theme="team"
+          />
         </div>
 
         <div className="p-4 border-t border-neutral-100 flex flex-col gap-2">
-          <Button theme="team" fullWidth disabled={!valido} onClick={handleSalvar}>
+          <Button theme="team" fullWidth disabled={!valido} loading={salvando} onClick={handleSalvar}>
             {isEditing ? "Salvar alterações" : "Criar produto"}
           </Button>
 

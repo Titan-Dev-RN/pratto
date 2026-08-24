@@ -1,4 +1,6 @@
-import { ItemSacola } from "@/types/domain";
+/* Usado só pelo fluxo público (sacola/delivery), que continua mock —
+   ver Fase 7 do plano de integração. */
+import { ItemSacolaLegacy as ItemSacola } from "@/types/domain.legacy";
 import { formatBRL } from "@/lib/utils";
 
 interface ResumoConfirmacaoProps {
@@ -8,7 +10,9 @@ interface ResumoConfirmacaoProps {
   metodoPagamento: string;
   localLabel: string;
   localDetalhe: string;
-  chavePix: string;
+  /* Sem chave Pix real pra pedido de delivery (sem endpoint de dados do
+     restaurante na API pública) — só mostra a seção quando fornecida. */
+  chavePix?: string;
 }
 
 export function ResumoConfirmacao({
@@ -53,13 +57,15 @@ export function ResumoConfirmacao({
         <p className="text-neutral-500">{localDetalhe}</p>
       </div>
 
-      <div className="border-t border-neutral-100 pt-3">
-        <p className="font-semibold text-neutral-700 mb-0.5">🔑 Chave Pix da loja</p>
-        <p className="text-neutral-500">{chavePix}</p>
-        <p className="text-neutral-400 text-xs mt-1.5">
-          Guarde esses dados: mesmo que o pedido já esteja no sistema da loja, use-os para conferir com o atendimento online antes de pagar, seja qual for o método escolhido.
-        </p>
-      </div>
+      {chavePix && (
+        <div className="border-t border-neutral-100 pt-3">
+          <p className="font-semibold text-neutral-700 mb-0.5">🔑 Chave Pix da loja</p>
+          <p className="text-neutral-500">{chavePix}</p>
+          <p className="text-neutral-400 text-xs mt-1.5">
+            Guarde esses dados: mesmo que o pedido já esteja no sistema da loja, use-os para conferir com o atendimento online antes de pagar, seja qual for o método escolhido.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

@@ -5,12 +5,16 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { useCartStore } from "@/lib/store/cart";
+import { usePedidoLocalStore } from "@/lib/store/pedidoLocal";
+import { useMounted } from "@/lib/hooks/useMounted";
 import { formatBRL } from "@/lib/utils";
 import { toast } from "@/components/ui/Toast";
 import { mockRestaurante } from "@/lib/mock";
 import { MetodoPagamento, metodosPagamento } from "@/lib/pagamento";
 import { ResumoConfirmacao } from "@/components/pedido/ResumoConfirmacao";
-import { ItemSacola } from "@/types/domain";
+import { PageLoader } from "@/components/ui/Spinner";
+/* Página pública em mock — checkout do cliente pausado, ver Fase 7 do plano. */
+import { ItemSacolaLegacy as ItemSacola, ItemPedidoLegacy } from "@/types/domain.legacy";
 
 export default function SacolaPage({ params }: { params: Promise<{ slug: string }> }) {
   return (
@@ -36,6 +40,11 @@ function SacolaContent({ params }: { params: Promise<{ slug: string }> }) {
   } | null>(null);
 
   const { itens, total: getTotal, removerItem, atualizarQuantidade, limparSacola } = useCartStore();
+  const salvarPedido = usePedidoLocalStore((s) => s.salvarPedido);
+  /* Carrinho vem de localStorage (zustand persist) — no SSR está sempre
+     vazio, então "sacola vazia" vs. lista de itens só pode decidir depois
+     de montar no cliente, senão diverge do HTML do servidor. */
+  const mounted = useMounted();
   const totalSacola = getTotal();
 
   async function enviarPedido() {
@@ -47,6 +56,36 @@ function SacolaContent({ params }: { params: Promise<{ slug: string }> }) {
       await new Promise((r) => setTimeout(r, 1000));
       const numero = String(Math.floor(Math.random() * 900) + 100);
       const id = `ped-${Date.now()}`;
+      const agora = new Date().toISOString();
+
+      /* Salva o pedido de verdade (itens/total/pagamento reais) indexado
+         pelo id — é o que corrige "acompanhar pedido" mostrando sempre o
+         mesmo pedido de mentirinha, desconectado do que a pessoa pediu. */
+      const itensParaAcompanhamento: ItemPedidoLegacy[] = itensPedido.map((item, i) => ({
+        id: `${id}-item-${i}`,
+        produto_id: item.produto.id,
+        produto_nome: item.produto.nome,
+        produto_foto: item.produto.foto_url,
+        quantidade: item.quantidade,
+        preco_unitario: item.produto.preco,
+        preco_total: item.preco_total,
+        observacao: item.observacao,
+        variacoes: item.variacoes_selecionadas.map((v) => ({ nome: v.nome, preco_adicional: v.preco_adicional })),
+      }));
+      salvarPedido({
+        id,
+        numero,
+        tipo: mesaId ? "mesa" : "balcao",
+        status: "confirmado",
+        mesa_id: mesaId ?? undefined,
+        mesa_numero: mesaId ? Number(mesaId) : undefined,
+        restaurante_id: slug,
+        itens: itensParaAcompanhamento,
+        total: totalPedido,
+        criado_em: agora,
+        atualizado_em: agora,
+      });
+
       setPedidoConfirmado({ id, numero, itens: itensPedido, total: totalPedido, pagamento });
       limparSacola();
     } catch {
@@ -94,6 +133,8 @@ function SacolaContent({ params }: { params: Promise<{ slug: string }> }) {
       </div>
     );
   }
+
+  if (!mounted) return <PageLoader />;
 
   return (
     <div className="min-h-screen bg-neutral-50">
