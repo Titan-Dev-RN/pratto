@@ -2,9 +2,14 @@
    versionamento, nomes em inglês) — confirmada ao vivo em 2026-08-24
    contra http://85.209.92.60:5000. Existe uma segunda superfície no mesmo
    app (`/api/v1/cliente/*`, nomes em português) que NÃO é a usada — mesmo
-   banco, contrato diferente. Ver INTEGRACAO_API.md. */
-const ORIGIN = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-const BASE_URL = `${ORIGIN}/api`;
+   banco, contrato diferente. Ver INTEGRACAO_API.md.
+
+   URL relativa (mesma origem do app) e não a URL do backend direto: todo
+   fetch daqui roda no navegador, e em produção o app é HTTPS enquanto o
+   backend ainda é HTTP puro — fetch HTTPS→HTTP é bloqueado pelo browser
+   como "mixed content". `/api/*` cai em src/app/api/[...path]/route.ts,
+   que roda no servidor e repassa pro backend real (ver esse arquivo). */
+const BASE_URL = "/api";
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -87,10 +92,12 @@ export async function apiDelete<T>(path: string, authed = true): Promise<T> {
   return handleResponse<T>(res);
 }
 
-/* O único login do app fica fora de /api (é /api/v1/cliente/autenticacao/
-   login) — por isso usa ORIGIN puro em vez de BASE_URL. */
+/* O único login do app fica fora do prefixo de recurso (é
+   /api/v1/cliente/autenticacao/login, não .../api/<recurso>) — por isso
+   recebe o path já completo em vez de usar BASE_URL. Ainda assim é
+   relativo pelo mesmo motivo: cai no proxy de src/app/api/[...path]/. */
 export async function apiPostAbsolute<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${ORIGIN}${path}`, {
+  const res = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -106,4 +113,4 @@ export function toNumber(value: number | string | null | undefined): number {
   return typeof value === "number" ? value : parseFloat(value) || 0;
 }
 
-export { BASE_URL, ORIGIN };
+export { BASE_URL };
