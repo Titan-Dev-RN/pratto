@@ -3,19 +3,17 @@
 import { use } from "react";
 import Link from "next/link";
 import { usePedidoLocalStore, statusSimulado } from "@/lib/store/pedidoLocal";
-import { useHistoricoPedidosStore } from "@/lib/store/historicoPedidos";
-import { usePedidosPublicos } from "@/lib/api/queries/publicOrders";
+import { useClienteCadastroStore } from "@/lib/store/clienteCadastro";
+import { usePedidosCliente } from "@/lib/api/queries/publicOrders";
 import { useMounted } from "@/lib/hooks/useMounted";
 import { PageLoader } from "@/components/ui/Spinner";
 import { formatBRL, formatarTempo } from "@/lib/utils";
 
-/* "Meus pedidos" — não existe endpoint de listar pedidos do cliente na
-   API (só dá pra consultar UM pedido de delivery sabendo o código de
-   rastreio). Junta dois tipos de pedido guardados neste aparelho:
-   - Delivery: código real salvo em lib/store/historicoPedidos.ts,
-     status buscado ao vivo (100% real).
-   - Mesa/balcão: pedido inteiro simulado em lib/store/pedidoLocal.ts,
-     status calculado por tempo decorrido (ver statusSimulado). */
+/* "Meus pedidos" — histórico real de delivery, vindo de
+   GET /api/public/storefront/:slug/orders (filtrado no backend por
+   cliente_id do token autenticado, ver lib/api/queries/publicOrders.ts).
+   Pedido de mesa/balcão continua simulado (lib/store/pedidoLocal.ts, sem
+   endpoint de checkout público pra esse tipo). */
 
 const statusLabel: Record<string, string> = {
   pendente: "Recebido",
@@ -49,11 +47,11 @@ export default function MeusPedidosPage({ params }: { params: Promise<{ slug: st
   const mounted = useMounted();
 
   const pedidosLocais = usePedidoLocalStore((s) => s.pedidos);
-  const historico = useHistoricoPedidosStore((s) => s.pedidos);
-  const codigos = mounted ? historico.map((h) => h.codigoRastreio) : [];
-  const { pedidos: reais, isLoading } = usePedidosPublicos(codigos);
+  const cadastro = useClienteCadastroStore();
+  const autenticado = mounted && cadastro.cadastrado;
+  const { data: pedidosDelivery, isLoading } = usePedidosCliente(slug, autenticado);
 
-  if (!mounted || isLoading) return <PageLoader />;
+  if (!mounted || (autenticado && isLoading)) return <PageLoader />;
 
   const linhasLocais: LinhaPedido[] = Object.values(pedidosLocais).map((p) => ({
     id: p.id,
@@ -64,18 +62,16 @@ export default function MeusPedidosPage({ params }: { params: Promise<{ slug: st
     criadoEm: p.criado_em,
   }));
 
-  const linhasReais: LinhaPedido[] = reais
-    .filter((r): r is typeof r & { data: NonNullable<typeof r.data> } => !!r.data)
-    .map((r) => ({
-      id: r.codigo,
-      rotulo: `#${r.codigo}`,
-      origem: "Delivery",
-      total: r.data.total,
-      status: r.data.status,
-      criadoEm: historico.find((h) => h.codigoRastreio === r.codigo)?.criadoEm ?? "",
-    }));
+  const linhasDelivery: LinhaPedido[] = (pedidosDelivery ?? []).map((p) => ({
+    id: p.codigo_rastreio,
+    rotulo: `#${p.codigo_rastreio}`,
+    origem: "Delivery",
+    total: p.total,
+    status: p.status,
+    criadoEm: p.created_at,
+  }));
 
-  const todas = [...linhasLocais, ...linhasReais].sort((a, b) => (a.criadoEm < b.criadoEm ? 1 : -1));
+  const todas = [...linhasLocais, ...linhasDelivery].sort((a, b) => (a.criadoEm < b.criadoEm ? 1 : -1));
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -89,13 +85,14 @@ export default function MeusPedidosPage({ params }: { params: Promise<{ slug: st
       </header>
 
       <main className="max-w-lg mx-auto px-4 py-5">
-        <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5">
-          <span className="text-base leading-none">📱</span>
-          <p className="text-xs text-amber-700">
-            Lista guardada só neste aparelho (sem conta de cliente na API ainda) — o status de cada pedido é
-            consultado ao vivo.
-          </p>
-        </div>
+        {!autenticado && (
+          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5">
+            <span className="text-base leading-none">🔒</span>
+            <p className="text-xs text-amber-700">
+              Cadastre-se para pedir delivery e ver seu histórico de pedidos aqui.
+            </p>
+          </div>
+        )}
 
         {todas.length === 0 ? (
           <div className="text-center py-16 text-neutral-400">

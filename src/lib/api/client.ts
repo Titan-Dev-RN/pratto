@@ -16,6 +16,13 @@ function getToken(): string | null {
   return localStorage.getItem("pratto_token");
 }
 
+/* Sessão do cliente final (delivery) é independente da sessão de staff —
+   token próprio, guardado por lib/store/clienteCadastro.ts. */
+function getClienteToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("pratto_cliente_token");
+}
+
 /* Dois formatos de erro coexistem (ver types/api.ts): `{errors: [...]}`
    limpo, ou a página de debug do Rails em JSON quando é um erro de
    framework não tratado pelo controller (parâmetro faltando, enum
@@ -64,8 +71,31 @@ function authHeaders(authed: boolean): HeadersInit {
   return headers;
 }
 
+function clienteAuthHeaders(): HeadersInit {
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  const token = getClienteToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+
 export async function apiGet<T>(path: string, authed = true): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, { headers: authHeaders(authed) });
+  return handleResponse<T>(res);
+}
+
+/* Variante autenticada com o token do cliente final (delivery), não o de
+   staff — usada só nas rotas de /public/storefront/:slug/{orders,me}. */
+export async function apiGetCliente<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, { headers: clienteAuthHeaders() });
+  return handleResponse<T>(res);
+}
+
+export async function apiPostCliente<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers: clienteAuthHeaders(),
+    body: JSON.stringify(body),
+  });
   return handleResponse<T>(res);
 }
 

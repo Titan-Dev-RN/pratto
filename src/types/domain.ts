@@ -137,10 +137,12 @@ export interface ItemPedidoPublico {
 }
 
 export interface PedidoPublico {
+  id: string;
   codigo_rastreio: string;
   nome_cliente: string;
   status: string;
   total: number;
+  created_at: string;
   items: ItemPedidoPublico[];
 }
 

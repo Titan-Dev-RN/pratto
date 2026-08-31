@@ -129,8 +129,8 @@ export interface EnderecoEntregaPayload {
   cep: string;
 }
 export interface CriarPedidoPublicoPayload {
-  nome_cliente: string;
-  telefone_cliente: string;
+  nome_cliente?: string;
+  telefone_cliente?: string;
   endereco_entrega: EnderecoEntregaPayload;
   items: { product_id: string; quantity: number; observacao?: string }[];
 }
@@ -138,4 +138,30 @@ export interface PedidoPublicoConfirmacao {
   message: string;
   codigo_rastreio: string;
   total: number | string;
+}
+
+/* Conta do cliente final (delivery) — cadastro obrigatório antes do
+   checkout, é o que vincula o pedido ao histórico do cliente (cliente_id
+   no backend). Rotas: POST .../customers (cadastro), POST
+   .../customers/login, GET .../me — todas em
+   /api/public/storefront/:slug/. */
+export interface RegistrarClientePayload {
+  nome: string;
+  email: string;
+  telefone: string;
+  senha: string;
+}
+export interface LoginClientePayload {
+  email: string;
+  senha: string;
+}
+export interface ClienteFinal {
+  id: string;
+  nome: string;
+  email: string;
+  telefone: string;
+}
+export interface ClienteAuthResponse {
+  token: string;
+  customer: ClienteFinal;
 }

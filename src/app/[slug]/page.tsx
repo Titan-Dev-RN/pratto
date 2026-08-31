@@ -6,6 +6,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { mockRestaurante } from "@/lib/mock";
 import { useClienteCadastroStore } from "@/lib/store/clienteCadastro";
+import { useRegistrarCliente } from "@/lib/api/queries/customers";
+import { extractErrorMessage } from "@/lib/api/client";
 import { useMounted } from "@/lib/hooks/useMounted";
 import { Button } from "@/components/ui/Button";
 
@@ -14,8 +16,8 @@ type Modo = "escolha" | "mesa" | "cadastro";
 /* Acesso inicial do cliente: as duas entradas ("comer aqui" e "delivery")
    agora são obrigatórias antes de chegar no cardápio — sem atalho pra
    pular direto pro menu sem contexto. "Comer aqui" exige número da mesa;
-   "Delivery" exige um cadastro (simulado, ver aviso na tela — sem
-   endpoint de conta de cliente na API real ainda). */
+   "Delivery" exige cadastro real (POST /api/public/storefront/:slug/customers
+   — cria a conta do cliente e vincula os pedidos dele ao histórico). */
 export default function RestaurantePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const router = useRouter();
@@ -29,10 +31,12 @@ export default function RestaurantePage({ params }: { params: Promise<{ slug: st
      depois de montar no cliente, senão o subtítulo do botão diverge do
      HTML do servidor. */
   const mounted = useMounted();
-  const [nome, setNome] = useState(cadastro.nome);
-  const [telefone, setTelefone] = useState(cadastro.telefone);
-  const [email, setEmail] = useState(cadastro.email);
-  const [cadastrando, setCadastrando] = useState(false);
+  const [nome, setNome] = useState("");
+  const [telefone, setTelefone] = useState("");
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [erroCadastro, setErroCadastro] = useState("");
+  const registrar = useRegistrarCliente(slug);
 
   const restaurante = mockRestaurante;
 
@@ -54,14 +58,20 @@ export default function RestaurantePage({ params }: { params: Promise<{ slug: st
   }
 
   async function confirmarCadastro() {
-    if (!nome.trim() || !telefone.trim() || !email.trim()) return;
-    setCadastrando(true);
-    /* Simulado — sem endpoint de conta de cliente na API. Só guarda
-       local pra não pedir de novo e pré-preencher o checkout real. */
-    await new Promise((r) => setTimeout(r, 700));
-    cadastro.salvar({ nome: nome.trim(), telefone: telefone.trim(), email: email.trim() });
-    setCadastrando(false);
-    router.push(`/${slug}/menu?modo=delivery`);
+    if (!nome.trim() || !telefone.trim() || !email.trim() || senha.length < 6) return;
+    setErroCadastro("");
+    try {
+      const resposta = await registrar.mutateAsync({
+        nome: nome.trim(),
+        telefone: telefone.trim(),
+        email: email.trim(),
+        senha,
+      });
+      cadastro.salvar(resposta.token, resposta.customer);
+      router.push(`/${slug}/menu?modo=delivery`);
+    } catch (err) {
+      setErroCadastro(extractErrorMessage(err));
+    }
   }
 
   return (
@@ -217,17 +227,15 @@ export default function RestaurantePage({ params }: { params: Promise<{ slug: st
 
             <h2 className="text-lg font-bold text-neutral-900 mb-1">Cadastro rápido</h2>
             <p className="text-sm text-neutral-500 mb-4">
-              Pra pedir delivery, crie um cadastro rapidinho.
+              Pra pedir delivery, crie sua conta — assim você acompanha seus pedidos depois.
             </p>
 
-            {/* Aviso visual: simulado de propósito */}
-            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5">
-              <span className="text-base leading-none">🧪</span>
-              <p className="text-xs text-amber-700">
-                Cadastro simulado — só guardamos seus dados neste aparelho pra preencher o pedido.
-                Nenhuma conta é criada de verdade ainda.
-              </p>
-            </div>
+            {erroCadastro && (
+              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl p-3 mb-5">
+                <span className="text-base leading-none">⚠️</span>
+                <p className="text-xs text-red-700">{erroCadastro}</p>
+              </div>
+            )}
 
             <div className="flex flex-col gap-3">
               <div className="flex flex-col gap-1.5">
@@ -261,6 +269,16 @@ export default function RestaurantePage({ params }: { params: Promise<{ slug: st
                   className="w-full rounded-xl border-2 border-neutral-200 px-4 py-3 text-sm focus:outline-none focus:border-coral-400 transition-colors"
                 />
               </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-neutral-700">Senha</label>
+                <input
+                  type="password"
+                  placeholder="Mínimo 6 caracteres"
+                  value={senha}
+                  onChange={(e) => setSenha(e.target.value)}
+                  className="w-full rounded-xl border-2 border-neutral-200 px-4 py-3 text-sm focus:outline-none focus:border-coral-400 transition-colors"
+                />
+              </div>
             </div>
 
             <Button
@@ -268,8 +286,8 @@ export default function RestaurantePage({ params }: { params: Promise<{ slug: st
               size="lg"
               fullWidth
               className="mt-6"
-              disabled={!nome.trim() || !telefone.trim() || !email.trim()}
-              loading={cadastrando}
+              disabled={!nome.trim() || !telefone.trim() || !email.trim() || senha.length < 6}
+              loading={registrar.isPending}
               onClick={confirmarCadastro}
             >
               Criar cadastro e continuar

@@ -2,29 +2,45 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { ClienteFinal } from "@/types/api";
 
-/* Cadastro do cliente pra delivery — simulado de propósito (sem
-   endpoint de conta de cliente na API; o checkout de delivery em si já
-   é real, mas criar "conta" não). Serve só pra: (1) deixar a exigência
-   de "cadastro antes de pedir" visível e (2) evitar pedir nome/telefone
-   de novo na tela de endereço, já que o checkout real exige os dois. */
+/* Conta real do cliente final (delivery) — POST/GET
+   /api/public/storefront/:slug/customers|me (ver lib/api/queries/customers.ts).
+   O token vive também numa chave própria do localStorage
+   (`pratto_cliente_token`, lida por lib/api/client.ts), no mesmo padrão de
+   lib/store/session.ts pra sessão de staff — mas totalmente independente
+   dela (contas diferentes, tokens diferentes). */
 interface ClienteCadastroState {
-  nome: string;
-  telefone: string;
-  email: string;
+  token: string | null;
+  cliente: ClienteFinal | null;
   cadastrado: boolean;
-  salvar: (dados: { nome: string; telefone: string; email: string }) => void;
+  salvar: (token: string, cliente: ClienteFinal) => void;
+  sair: () => void;
 }
 
 export const useClienteCadastroStore = create<ClienteCadastroState>()(
   persist(
     (set) => ({
-      nome: "",
-      telefone: "",
-      email: "",
+      token: null,
+      cliente: null,
       cadastrado: false,
-      salvar: (dados) => set({ ...dados, cadastrado: true }),
+
+      salvar: (token, cliente) => {
+        if (typeof window !== "undefined") localStorage.setItem("pratto_cliente_token", token);
+        set({ token, cliente, cadastrado: true });
+      },
+
+      sair: () => {
+        if (typeof window !== "undefined") localStorage.removeItem("pratto_cliente_token");
+        set({ token: null, cliente: null, cadastrado: false });
+      },
     }),
-    { name: "pratto-cliente-cadastro" }
+    {
+      name: "pratto-cliente-cadastro",
+      /* v2: cadastro deixou de ser simulado (nome/telefone/email soltos) e
+         virou conta real com token — formato antigo é descartado. */
+      version: 2,
+      migrate: () => ({ token: null, cliente: null, cadastrado: false }),
+    }
   )
 );

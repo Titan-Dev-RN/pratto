@@ -1,13 +1,14 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useCartStore } from "@/lib/store/cart";
 import { useClienteCadastroStore } from "@/lib/store/clienteCadastro";
-import { useHistoricoPedidosStore } from "@/lib/store/historicoPedidos";
 import { useMounted } from "@/lib/hooks/useMounted";
+import { PageLoader } from "@/components/ui/Spinner";
 import { useCriarPedidoPublico } from "@/lib/api/queries/publicOrders";
 import { extractErrorMessage } from "@/lib/api/client";
 import { formatBRL } from "@/lib/utils";
@@ -16,11 +17,13 @@ import { MetodoPagamento, metodosPagamento } from "@/lib/pagamento";
 import { ResumoConfirmacao } from "@/components/pedido/ResumoConfirmacao";
 import { ItemSacolaLegacy as ItemSacola } from "@/types/domain.legacy";
 
-/* Delivery agora é checkout real: POST /api/public/storefront/:slug/orders
-   não exige login e cria o pedido de verdade no backend (confirmado ao
-   vivo — ver types/api.ts). É o único fluxo público que dá pra tirar do
-   mock: esse endpoint exige endereço, então pedido de mesa/balcão (sem
-   endereço) continua simulado em sacola/page.tsx. */
+/* Delivery é checkout real: POST /api/public/storefront/:slug/orders exige
+   cliente autenticado (cadastro real feito em [slug]/page.tsx, token em
+   lib/store/clienteCadastro.ts) e cria o pedido vinculado ao cliente_id —
+   é isso que alimenta "Meus pedidos" (ver [slug]/pedidos/page.tsx). Nome e
+   telefone já vêm do cadastro, não precisam ser digitados de novo aqui.
+   Pedido de mesa/balcão (sem endereço) continua simulado em
+   sacola/page.tsx — esse endpoint só aceita delivery. */
 
 type Step = "endereco" | "sacola" | "confirmado";
 
@@ -35,6 +38,7 @@ interface Endereco {
 
 export default function DeliveryPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
+  const router = useRouter();
   const [step, setStep] = useState<Step>("endereco");
   const [pedidoId, setPedidoId] = useState<string | null>(null);
   const [pagamento, setPagamento] = useState<MetodoPagamento>("pix");
@@ -44,20 +48,15 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
     pagamento: MetodoPagamento;
   } | null>(null);
 
-  /* Pré-preenche com o cadastro simulado feito na tela inicial (ver
-     [slug]/page.tsx) — evita pedir nome/telefone de novo; continua
-     editável e ainda é obrigatório, já que o checkout real (este) exige
-     os dois campos de verdade. `null` = "usuário ainda não digitou nada,
-     usa o valor do cadastro"; string vazia digitada conta como "tocado".
-     Só usa o cadastro depois de montar: vem de localStorage (zustand
-     persist), que no SSR está sempre vazio — usar direto divergiria do
-     HTML do servidor. */
-  const [nomeDigitado, setNomeDigitado] = useState<string | null>(null);
-  const [telefoneDigitado, setTelefoneDigitado] = useState<string | null>(null);
   const cadastro = useClienteCadastroStore();
+  /* cadastro vem de localStorage (zustand persist) — só decide se
+     redireciona pra tela de cadastro depois de montar no cliente, senão
+     diverge do HTML do servidor. */
   const mounted = useMounted();
-  const nomeCliente = nomeDigitado ?? (mounted ? cadastro.nome : "");
-  const telefoneCliente = telefoneDigitado ?? (mounted ? cadastro.telefone : "");
+  useEffect(() => {
+    if (mounted && !cadastro.cadastrado) router.replace(`/${slug}`);
+  }, [mounted, cadastro.cadastrado, router, slug]);
+
   const [endereco, setEndereco] = useState<Endereco>({
     logradouro: "",
     numero: "",
@@ -69,7 +68,6 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
 
   const { itens, total: getTotal, quantidadeTotal, removerItem, atualizarQuantidade, limparSacola } = useCartStore();
   const criarPedido = useCriarPedidoPublico(slug);
-  const adicionarAoHistorico = useHistoricoPedidosStore((s) => s.adicionar);
   const totalSacola = getTotal();
   const qtd = quantidadeTotal();
 
@@ -77,8 +75,6 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
     setEndereco((f) => ({ ...f, [k]: e.target.value }));
 
   const dadosOk =
-    nomeCliente.trim() &&
-    telefoneCliente.trim() &&
     endereco.logradouro.trim() &&
     endereco.numero.trim() &&
     endereco.bairro.trim() &&
@@ -90,8 +86,6 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
     const itensPedido = itens;
     try {
       const resposta = await criarPedido.mutateAsync({
-        nome_cliente: nomeCliente.trim(),
-        telefone_cliente: telefoneCliente.trim(),
         endereco_entrega: {
           logradouro: endereco.logradouro.trim(),
           numero: endereco.numero.trim(),
@@ -109,13 +103,6 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
 
       setPedidoId(resposta.codigo_rastreio);
       setPedidoConfirmado({ itens: itensPedido, total: Number(resposta.total), pagamento });
-      /* Sem isso, o pedido "some" — não tem endpoint pra listar pedidos
-         do cliente, só pra consultar um específico já sabendo o código. */
-      adicionarAoHistorico({
-        codigoRastreio: resposta.codigo_rastreio,
-        total: Number(resposta.total),
-        criadoEm: new Date().toISOString(),
-      });
       limparSacola();
       setStep("confirmado");
     } catch (err) {
@@ -125,6 +112,8 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
       });
     }
   }
+
+  if (!mounted || !cadastro.cadastrado) return <PageLoader />;
 
   /* ─── Tela de confirmação ─── */
   if (step === "confirmado") {
@@ -193,7 +182,7 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
         {/* Stepper */}
         <div className="ml-auto flex items-center gap-1.5 text-xs text-neutral-400">
           <span className={step === "endereco" ? "text-coral-500 font-semibold" : ""}>
-            1. Seus dados
+            1. Endereço
           </span>
           <span>›</span>
           <span className={step === "sacola" ? "text-coral-500 font-semibold" : ""}>
@@ -206,24 +195,11 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
         {/* ─── Step 1: Dados + Endereço ─── */}
         {step === "endereco" && (
           <div className="bg-white rounded-2xl p-5 shadow-sm flex flex-col gap-4">
-            <h2 className="font-semibold text-neutral-900">Seus dados</h2>
-            <Input
-              label="Nome"
-              placeholder="Seu nome"
-              value={nomeCliente}
-              onChange={(e) => setNomeDigitado(e.target.value)}
-              theme="coral"
-            />
-            <Input
-              label="Telefone"
-              placeholder="(11) 99999-9999"
-              value={telefoneCliente}
-              onChange={(e) => setTelefoneDigitado(e.target.value)}
-              inputMode="tel"
-              theme="coral"
-            />
-
-            <h2 className="font-semibold text-neutral-900 mt-2">Endereço de entrega</h2>
+            <h2 className="font-semibold text-neutral-900">Endereço de entrega</h2>
+            <p className="text-xs text-neutral-400 -mt-2">
+              Pedindo como <span className="font-medium text-neutral-600">{cadastro.cliente?.nome}</span> ·{" "}
+              {cadastro.cliente?.telefone}
+            </p>
             <Input
               label="CEP"
               placeholder="00000000"
