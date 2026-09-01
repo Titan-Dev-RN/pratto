@@ -9,7 +9,7 @@ interface SessionUser {
   nome: string;
   email: string;
   role: UserRole;
-  restaurante_id: string;
+  restaurante_id?: string;
 }
 
 interface SessionState {
@@ -45,6 +45,13 @@ export const useSessionStore = create<SessionState>()(
         return Array.isArray(role) ? role.includes(u.role) : u.role === role;
       },
     }),
-    { name: "pratto-session" }
+    {
+      name: "pratto-session",
+      /* v2: ids viraram UUID (string) e o papel "cozinha" passou a existir
+         de verdade na API real — sessões antigas em localStorage não são
+         compatíveis e precisam ser descartadas. */
+      version: 2,
+      migrate: () => ({ token: null, usuario: null }),
+    }
   )
 );

@@ -80,3 +80,23 @@ html {
   border-color: var(--color-team-400);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-team-400) 20%, transparent);
 }
+
+/* Impressão real de comanda/cupom (cozinha #1, caixa) — abre o diálogo
+   nativo de impressão do sistema (imprime na impressora configurada ou
+   salva como PDF), em vez da simulação por setTimeout de antes. Só o
+   elemento marcado com #pratto-print-area aparece na folha impressa. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #pratto-print-area,
+  #pratto-print-area * {
+    visibility: visible;
+  }
+  #pratto-print-area {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
+}

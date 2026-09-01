@@ -21,7 +21,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={`${geist.variable} h-full`}>
+    <html lang="pt-BR" className={`${geist.variable} h-full`} data-scroll-behavior="smooth">
       <body className="min-h-full bg-white antialiased">
         <Providers>{children}</Providers>
       </body>

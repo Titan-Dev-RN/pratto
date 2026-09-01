@@ -1,16 +1,55 @@
 "use client";
 
-import { use, useState, useMemo } from "react";
-import Image from "next/image";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+<<<<<<< HEAD
 import { useCategorias, useProdutos, useRestaurante } from "@/lib/api/queries/menu";
 import { Produto } from "@/types/domain";
 import { useCartStore } from "@/lib/store/cart";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
+=======
+import { usePublicProdutos, PublicProduto } from "@/lib/api/queries/publicStorefront";
+import { ProdutoLegacy as Produto } from "@/types/domain.legacy";
+import { useCartStore } from "@/lib/store/cart";
+import { Button } from "@/components/ui/Button";
+import { PageLoader } from "@/components/ui/Spinner";
+import { ErrorState } from "@/components/ui/ErrorState";
+>>>>>>> c4bfebad0726f88fb025f476af8a10e3dfd65f59
 import { formatBRL } from "@/lib/utils";
+
+/* Demo pública ("Demo cardápio" na home) — mostra o cardápio de verdade
+   do restaurante via GET /api/public/storefront/:slug/products (público,
+   sem login, confirmado ao vivo). Esse endpoint não devolve categoria
+   nem foto — é só nome/descrição/preço — então a listagem é uma lista
+   única, sem abas de categoria (mesmo formato que o cardápio do staff,
+   que também não tem mais categorias no backend real).
+
+   Checkout (sacola/delivery) continua mock — ver INTEGRACAO_API.md — mas
+   o carrinho já aceita esses produtos reais normalmente, então dá pra
+   montar a sacola com preços de verdade mesmo com o envio simulado. */
+function paraProdutoDoCarrinho(p: PublicProduto, ordem: number): Produto {
+  return {
+    id: p.id,
+    nome: p.nome,
+    descricao: p.descricao,
+    preco: p.preco,
+    ativo: true,
+    ordem,
+    categoria_id: "",
+    restaurante_id: "",
+    grupos: [],
+  };
+}
+
+function nomeDoSlug(slug: string): string {
+  return slug
+    .split("-")
+    .map((parte) => parte.charAt(0).toUpperCase() + parte.slice(1))
+    .join(" ");
+}
 
 export default function MenuPage({ params }: { params: Promise<{ slug: string }> }) {
   return (
@@ -24,11 +63,13 @@ function MenuContent({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const searchParams = useSearchParams();
   const mesaId = searchParams.get("mesa");
-  const [categoriaAtiva, setCategoriaAtiva] = useState<string | null>(null);
+  const modoDelivery = searchParams.get("modo") === "delivery";
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
 
   const { adicionarItem, quantidadeTotal, total: getTotal, setContexto } = useCartStore();
+  const { data: produtosApi, isLoading, isError, refetch } = usePublicProdutos(slug);
 
+<<<<<<< HEAD
   const { data: restauranteData, isLoading: carregandoRestaurante } = useRestaurante(slug);
   const { data: categoriasData, isLoading: carregandoCategorias } = useCategorias(slug);
   const { data: produtosData, isLoading: carregandoProdutos } = useProdutos(slug);
@@ -54,145 +95,99 @@ function MenuContent({ params }: { params: Promise<{ slug: string }> }) {
       </div>
     );
   }
+=======
+  useEffect(() => setContexto(slug), [slug, setContexto]);
+
+  const totalSacola = getTotal();
+  const qtdSacola = quantidadeTotal();
+
+  if (isLoading) return <PageLoader />;
+  if (isError || !produtosApi) return <ErrorState onRetry={() => refetch()} />;
+
+  const produtos = produtosApi.map(paraProdutoDoCarrinho);
+>>>>>>> c4bfebad0726f88fb025f476af8a10e3dfd65f59
 
   return (
     <div className="min-h-screen bg-white">
       {/* Hero Banner */}
       <div className="relative h-48 overflow-hidden">
-        {restaurante.logo_url ? (
-          <Image src={restaurante.logo_url} alt={restaurante.nome} fill className="object-cover" sizes="100vw" priority />
-        ) : (
-          <div
-            className="absolute inset-0"
-            style={{
-              background: `repeating-linear-gradient(-45deg, #f47a56 0px, #f47a56 12px, #fbc8b0 12px, #fbc8b0 28px)`,
-            }}
-          />
-        )}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `repeating-linear-gradient(-45deg, #f47a56 0px, #f47a56 12px, #fbc8b0 12px, #fbc8b0 28px)`,
+          }}
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
         <div className="absolute bottom-0 left-0 right-0 px-4 py-4 text-white">
-          <h1 className="text-xl font-bold leading-tight drop-shadow">{restaurante.nome}</h1>
-          <div className="flex items-center gap-2 mt-1 text-sm opacity-90">
-            <span>⭐ 4.5</span>
-            <span>·</span>
-            <span>30 min · entrega grátis</span>
-          </div>
+          <h1 className="text-xl font-bold leading-tight drop-shadow">{nomeDoSlug(slug)}</h1>
+          <p className="text-sm opacity-90 mt-1">{produtos.length} itens no cardápio</p>
         </div>
       </div>
 
-      {/* Category tabs + contexto */}
+      {/* Barra de contexto (mesa ou volta) */}
       <div className="sticky top-0 z-30 bg-white border-b border-neutral-100 shadow-sm">
-        {/* Barra de contexto (mesa ou volta) */}
-        <div className="max-w-lg mx-auto px-4 pt-2.5 pb-0 flex items-center justify-between">
+        <div className="max-w-lg mx-auto px-4 py-2.5 flex items-center justify-between">
           <Link href={`/${slug}`} className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-600 transition-colors">
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 18l-6-6 6-6" />
             </svg>
             Início
           </Link>
-          {mesaId ? (
-            <span className="text-xs bg-coral-100 text-coral-700 font-semibold px-2.5 py-1 rounded-full">
-              🪑 Mesa {mesaId}
-            </span>
-          ) : (
-            <Link href={`/${slug}`} className="text-xs text-coral-500 font-medium hover:text-coral-600 transition-colors">
-              Escolher mesa
+          <div className="flex items-center gap-3">
+            {mesaId ? (
+              <span className="text-xs bg-coral-100 text-coral-700 font-semibold px-2.5 py-1 rounded-full">
+                🪑 Mesa {mesaId}
+              </span>
+            ) : modoDelivery ? (
+              <span className="text-xs bg-coral-100 text-coral-700 font-semibold px-2.5 py-1 rounded-full">
+                🛵 Delivery
+              </span>
+            ) : (
+              <Link href={`/${slug}`} className="text-xs text-coral-500 font-medium hover:text-coral-600 transition-colors">
+                Escolher mesa ou delivery
+              </Link>
+            )}
+            <Link href={`/${slug}/pedidos`} className="text-xs text-neutral-400 hover:text-neutral-600 transition-colors">
+              🧾 Meus pedidos
             </Link>
-          )}
-        </div>
-        <div className="max-w-lg mx-auto overflow-x-auto scrollbar-hide">
-          <div className="flex gap-2 px-4 py-3 w-max">
-            <button
-              onClick={() => setCategoriaAtiva(null)}
-              className={`px-4 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
-                !categoriaAtiva ? "bg-coral-500 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
-              }`}
-            >
-              Destaques
-            </button>
-            {categorias.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => setCategoriaAtiva(cat.id === categoriaAtiva ? null : cat.id)}
-                className={`px-4 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
-                  categoriaAtiva === cat.id ? "bg-coral-500 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
-                }`}
-              >
-                {cat.nome}
-              </button>
-            ))}
           </div>
         </div>
       </div>
 
       {/* Content */}
       <main className="max-w-lg mx-auto px-4 py-5 pb-32">
-        {!categoriaAtiva ? (
-          <>
-            {/* Seção destaques */}
-            <div className="mb-7">
-              <h2 className="font-bold text-neutral-900 text-base mb-3">Destaques da casa 🔥</h2>
-              <div className="grid grid-cols-2 gap-3">
-                {destaques.map((produto) => (
-                  <FeaturedCard
-                    key={produto.id}
-                    produto={produto}
-                    onSelecionar={() => setProdutoSelecionado(produto)}
-                    onAdicionar={() => adicionarItem(produto, 1)}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Seções por categoria */}
-            {categorias.map((cat) => {
-              const items = produtos.filter((p) => p.categoria_id === cat.id && p.ativo);
-              if (!items.length) return null;
-              return (
-                <div key={cat.id} className="mb-7">
-                  <h2 className="font-bold text-neutral-900 text-base mb-3">{cat.nome}</h2>
-                  <div className="flex flex-col gap-3">
-                    {items.map((produto) => (
-                      <ProdutoCard
-                        key={produto.id}
-                        produto={produto}
-                        onSelecionar={() => setProdutoSelecionado(produto)}
-                        onAdicionar={() => adicionarItem(produto, 1)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </>
-        ) : produtosFiltrados.length === 0 ? (
+        {produtos.length === 0 ? (
           <div className="text-center py-16 text-neutral-400">
-            <p className="font-medium">Nenhum produto nesta categoria</p>
+            <p className="font-medium">Cardápio ainda sem itens publicados</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            {produtosFiltrados.map((produto) => (
-              <ProdutoCard
-                key={produto.id}
-                produto={produto}
-                onSelecionar={() => setProdutoSelecionado(produto)}
-                onAdicionar={() => adicionarItem(produto, 1)}
-              />
-            ))}
+          <div className="mb-2">
+            <h2 className="font-bold text-neutral-900 text-base mb-3">Cardápio</h2>
+            <div className="flex flex-col gap-3">
+              {produtos.map((produto) => (
+                <ProdutoCard
+                  key={produto.id}
+                  produto={produto}
+                  onSelecionar={() => setProdutoSelecionado(produto)}
+                  onAdicionar={() => adicionarItem(produto, 1)}
+                />
+              ))}
+            </div>
           </div>
         )}
       </main>
 
-      {/* Sacola flutuante */}
+      {/* Sacola flutuante — vai pro checkout certo conforme o contexto:
+          mesa/balcão continuam simulados (sacola), delivery é real. */}
       {qtdSacola > 0 && (
         <div className="fixed bottom-0 left-0 right-0 z-40 p-4">
           <div className="max-w-lg mx-auto">
-            <Link href={`/${slug}/sacola${mesaId ? `?mesa=${mesaId}` : ""}`}>
+            <Link href={modoDelivery ? `/${slug}/delivery` : `/${slug}/sacola${mesaId ? `?mesa=${mesaId}` : ""}`}>
               <div className="bg-coral-500 text-white rounded-2xl py-4 px-5 flex items-center justify-between font-semibold shadow-lg shadow-coral-200 active:bg-coral-600 transition-colors cursor-pointer">
                 <span className="bg-coral-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold flex-shrink-0">
                   {qtdSacola}
                 </span>
-                <span>Sacola{mesaId ? ` · Mesa ${mesaId}` : ""}</span>
+                <span>Sacola{mesaId ? ` · Mesa ${mesaId}` : modoDelivery ? " · Delivery" : ""}</span>
                 <span>{formatBRL(totalSacola)}</span>
               </div>
             </Link>
@@ -215,47 +210,6 @@ function MenuContent({ params }: { params: Promise<{ slug: string }> }) {
   );
 }
 
-function FeaturedCard({
-  produto,
-  onSelecionar,
-  onAdicionar,
-}: {
-  produto: Produto;
-  onSelecionar: () => void;
-  onAdicionar: () => void;
-}) {
-  return (
-    <div
-      className="rounded-2xl border border-neutral-100 bg-white overflow-hidden cursor-pointer active:opacity-90 shadow-sm"
-      onClick={onSelecionar}
-    >
-      {produto.foto_url ? (
-        <div className="relative w-full aspect-square bg-neutral-100">
-          <Image src={produto.foto_url} alt={produto.nome} fill className="object-cover" sizes="(max-width: 512px) 50vw, 256px" />
-        </div>
-      ) : (
-        <div className="w-full aspect-square bg-coral-50 flex items-center justify-center text-4xl">🍽️</div>
-      )}
-      <div className="p-3">
-        <h3 className="font-semibold text-neutral-900 text-sm leading-snug line-clamp-1">{produto.nome}</h3>
-        {produto.descricao && (
-          <p className="text-xs text-neutral-400 mt-0.5 line-clamp-1">{produto.descricao}</p>
-        )}
-        <div className="flex items-center justify-between mt-2">
-          <span className="font-bold text-coral-600 text-sm">{formatBRL(produto.preco)}</span>
-          <button
-            onClick={(e) => { e.stopPropagation(); onAdicionar(); }}
-            className="w-7 h-7 rounded-full bg-coral-500 text-white flex items-center justify-center text-lg font-bold hover:bg-coral-600 active:bg-coral-700 transition-colors"
-            aria-label={`Adicionar ${produto.nome}`}
-          >
-            +
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ProdutoCard({
   produto,
   onSelecionar,
@@ -270,13 +224,7 @@ function ProdutoCard({
       className="flex gap-3 p-3 rounded-2xl border border-neutral-100 bg-white active:bg-neutral-50 cursor-pointer shadow-sm"
       onClick={onSelecionar}
     >
-      {produto.foto_url ? (
-        <div className="relative w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-neutral-100">
-          <Image src={produto.foto_url} alt={produto.nome} fill className="object-cover" sizes="80px" />
-        </div>
-      ) : (
-        <div className="w-20 h-20 rounded-xl bg-neutral-100 flex items-center justify-center flex-shrink-0 text-2xl">🍽️</div>
-      )}
+      <div className="w-20 h-20 rounded-xl bg-neutral-100 flex items-center justify-center flex-shrink-0 text-2xl">🍽️</div>
       <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
         <div>
           <h3 className="font-semibold text-neutral-900 text-sm leading-snug">{produto.nome}</h3>
@@ -318,11 +266,6 @@ function ProdutoModal({
         className="relative w-full max-w-lg mx-auto bg-white rounded-t-3xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {produto.foto_url && (
-          <div className="relative h-48 bg-neutral-100 flex-shrink-0">
-            <Image src={produto.foto_url} alt={produto.nome} fill className="object-cover" sizes="100vw" />
-          </div>
-        )}
         <div className="overflow-y-auto flex-1 p-5">
           <h2 className="text-xl font-bold text-neutral-900">{produto.nome}</h2>
           {produto.descricao && <p className="text-sm text-neutral-500 mt-1">{produto.descricao}</p>}
