@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSessionStore } from "@/lib/store/session";
-import { useMesas } from "@/lib/api/queries/mesas";
-import { useProdutos } from "@/lib/api/queries/menu";
+import { useMesasV1 as useMesas } from "@/lib/api/queries/v1/mesas";
+import { useProdutosV1 as useProdutos } from "@/lib/api/queries/v1/produtos";
 import { useMounted } from "@/lib/hooks/useMounted";
 import { PageLoader, Spinner } from "@/components/ui/Spinner";
 

@@ -70,12 +70,17 @@ export function EntregaStatusBadge({ status }: { status: string }) {
   return <Badge variant={variant} dot>{label}</Badge>;
 }
 
-export function TableStatusBadge({ status }: { status: TableStatus }) {
-  const map: Record<TableStatus, { label: string; variant: BadgeVariant }> = {
+/* Aceita string crua: a superfície V1 (/api/v1/cliente/mesas) pode
+   devolver valores fora do enum antigo (ex.: "fechada"). Fallback
+   defensivo mostra o valor cru em vez de quebrar, igual aos outros
+   badges de status. */
+export function TableStatusBadge({ status }: { status: TableStatus | string }) {
+  const map: Record<string, { label: string; variant: BadgeVariant }> = {
     livre: { label: "Livre", variant: "success" },
     ocupada: { label: "Ocupada", variant: "warning" },
     conta_pedida: { label: "Conta pedida", variant: "info" },
+    fechada: { label: "Fechada", variant: "neutral" },
   };
-  const { label, variant } = map[status];
+  const { label, variant } = map[status] ?? { label: status, variant: "neutral" as BadgeVariant };
   return <Badge variant={variant} dot>{label}</Badge>;
 }

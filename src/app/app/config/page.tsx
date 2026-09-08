@@ -1,10 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { useMesas, useMesa, useCriarMesa, useAtualizarMesa, useExcluirMesa } from "@/lib/api/queries/mesas";
-import { useUsuarios, useUsuario, useCriarUsuario, useAtualizarUsuario, useInativarUsuario } from "@/lib/api/queries/usuarios";
-import { useSessionStore } from "@/lib/store/session";
-import { Mesa, Usuario, UserRole } from "@/types/domain";
+import {
+  useMesasV1 as useMesas,
+  useMesaV1 as useMesa,
+  useCriarMesaV1 as useCriarMesa,
+  useAtualizarMesaV1 as useAtualizarMesa,
+  useExcluirMesaV1 as useExcluirMesa,
+} from "@/lib/api/queries/v1/mesas";
+import {
+  useUsuariosV1 as useUsuarios,
+  useCriarUsuarioV1 as useCriarUsuario,
+  useAtualizarUsuarioV1 as useAtualizarUsuario,
+} from "@/lib/api/queries/v1/usuarios";
+import { RestauranteTab } from "@/app/app/config/RestauranteTab";
+import { MesaV1 as Mesa, Usuario, UserRole } from "@/types/domain";
 import { extractErrorMessage } from "@/lib/api/client";
 import { PageLoader, Spinner } from "@/components/ui/Spinner";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -12,12 +22,13 @@ import { TableStatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { toast } from "@/components/ui/Toast";
 
-/* A aba "Restaurante" foi removida — a API usada (/api/*) não tem essa
-   entidade. "Mesas" usa dados reais (sem capacidade/lugares exibido —
-   Admin #1). "Equipe" agora é real: /api/users tem CRUD completo,
-   inclusive editar papel e inativar (Admin #3). */
+/* Migrado pra superfície V1 (/api/v1/cliente/*). A aba "Restaurante"
+   voltou — a v1 expõe GET/PUT /restaurante (a `/api/*` não tinha). "Mesas"
+   e "Equipe" usam os endpoints v1. Inativar usuário virou PUT
+   { ativo:false } (a v1 não documenta DELETE de usuário).
+   ⚠️ V1 não confirmada ao vivo — ver AGENTS/SESSAO. */
 
-type Tab = "mesas" | "equipe";
+type Tab = "restaurante" | "mesas" | "equipe";
 
 const roleBadge: Record<UserRole, string> = {
   garcom: "bg-blue-100 text-blue-700",
@@ -41,6 +52,7 @@ export default function ConfigPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: "equipe", label: "Equipe" },
     { key: "mesas", label: "Mesas" },
+    { key: "restaurante", label: "Restaurante" },
   ];
 
   return (
@@ -61,13 +73,12 @@ export default function ConfigPage() {
         ))}
       </div>
 
-      {tab === "equipe" ? <EquipeTab /> : <MesasTab />}
+      {tab === "equipe" ? <EquipeTab /> : tab === "mesas" ? <MesasTab /> : <RestauranteTab />}
     </div>
   );
 }
 
 function MesasTab() {
-  const { usuario } = useSessionStore();
   const { data: mesas, isLoading, isError, refetch } = useMesas();
   const criarMesa = useCriarMesa();
 
@@ -76,13 +87,11 @@ function MesasTab() {
   if (isLoading) return <PageLoader />;
   if (isError || !mesas) return <ErrorState onRetry={() => refetch()} />;
 
+  /* V1 (/api/v1/cliente/mesas) não exige `loja_id` — o token identifica o
+     restaurante. ⚠️ Não confirmado ao vivo. */
   function salvarNova(numero: number, capacidade?: number) {
-    if (!usuario?.restaurante_id) {
-      toast.error("Erro ao criar mesa", "Sessão sem loja associada — faça login de novo.");
-      return;
-    }
     criarMesa.mutate(
-      { numero, loja_id: usuario.restaurante_id, capacidade },
+      { numero, capacidade },
       {
         onSuccess: () => {
           toast.success(`Mesa ${numero} criada!`);
@@ -311,27 +320,27 @@ function EquipeTab() {
   const { data: usuarios, isLoading, isError, refetch } = useUsuarios();
   const criarUsuario = useCriarUsuario();
   const atualizarUsuario = useAtualizarUsuario();
-  const inativarUsuario = useInativarUsuario();
 
   const [modal, setModal] = useState<Usuario | null | "novo">(null);
 
-  /* Busca o usuário de novo por id ao abrir a edição — dado mais fresco
-     que o da lista. */
-  const editandoId = modal && modal !== "novo" ? modal.id : "";
-  const { data: usuarioFresco } = useUsuario(editandoId, { enabled: !!editandoId });
-  const usuarioParaEditar = modal !== "novo" ? (usuarioFresco ?? modal) : null;
+  /* A v1 não documenta GET /usuarios/:id — edita direto com o item da
+     lista. */
+  const usuarioParaEditar = modal !== "novo" ? modal : null;
 
   if (isLoading) return <PageLoader />;
   if (isError || !usuarios) return <ErrorState onRetry={() => refetch()} />;
 
-  /* DELETE /api/users/:id inativa de verdade (soft delete). Não existe
-     endpoint confirmado pra reativar — só mostramos a ação quando o
-     usuário está ativo. */
+  /* A v1 não documenta DELETE de usuário — "inativar" é PUT
+     { ativo:false } (o payload de atualização aceita `ativo`).
+     ⚠️ Não confirmado ao vivo. */
   function inativar(usuario: Usuario) {
-    inativarUsuario.mutate(usuario.id, {
-      onSuccess: () => toast.success("Usuário inativado."),
-      onError: (err) => toast.error("Erro ao inativar usuário", extractErrorMessage(err)),
-    });
+    atualizarUsuario.mutate(
+      { id: usuario.id, payload: { ativo: false } },
+      {
+        onSuccess: () => toast.success("Usuário inativado."),
+        onError: (err) => toast.error("Erro ao inativar usuário", extractErrorMessage(err)),
+      }
+    );
   }
 
   return (
@@ -391,7 +400,7 @@ function EquipeTab() {
               });
             } else if (modal) {
               atualizarUsuario.mutate(
-                { id: modal.id, payload: { name: dados.name, email: dados.email, role: dados.role } },
+                { id: modal.id, payload: { nome: dados.nome, email: dados.email, perfil: dados.perfil } },
                 {
                   onSuccess: () => {
                     toast.success("Membro atualizado!");
@@ -417,7 +426,7 @@ function MembroModal({
 }: {
   usuario: Usuario | null;
   salvando: boolean;
-  onSalvar: (dados: { name: string; email: string; password: string; role: UserRole }) => void;
+  onSalvar: (dados: { nome: string; email: string; senha: string; perfil: UserRole }) => void;
   onFechar: () => void;
   onInativar?: () => void;
 }) {
@@ -464,7 +473,7 @@ function MembroModal({
             fullWidth
             disabled={!valido}
             loading={salvando}
-            onClick={() => onSalvar({ name: nome.trim(), email: email.trim(), password: senha, role })}
+            onClick={() => onSalvar({ nome: nome.trim(), email: email.trim(), senha, perfil: role })}
           >
             {isEditing ? "Salvar alterações" : "Adicionar à equipe"}
           </Button>

@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Mesa } from "@/types/domain";
-import { useComanda } from "@/lib/api/queries/comandas";
-import { useAtualizarMesa } from "@/lib/api/queries/mesas";
-import { useProdutos } from "@/lib/api/queries/menu";
+import { MesaV1 } from "@/types/domain";
+import { usePedidoV1 } from "@/lib/api/queries/v1/pedidos";
+import { useFecharMesaV1 } from "@/lib/api/queries/v1/mesas";
+import { useProdutosV1 } from "@/lib/api/queries/v1/produtos";
 import { useSessionStore } from "@/lib/store/session";
 import { useCaixaStore } from "@/lib/store/caixa";
 import { FormaPagamento, PagamentoRegistrado } from "@/types/domain";
@@ -18,8 +18,9 @@ import { toast } from "@/components/ui/Toast";
    (desconto/acréscimo por item, taxa de serviço), o split de pagamento,
    o rateio e a recusa de cartão são simulados 100% no front e registrados
    na sessão de caixa local (ver lib/store/caixa.ts). O único efeito real
-   no backend é liberar a mesa (PATCH /api/tables/:id status=livre) quando
-   a venda inteira estiver paga. */
+   no backend é fechar a conta da mesa (PATCH /api/v1/cliente/mesas/:id/
+   fechar com { forma_pagamento }) quando a venda inteira estiver paga.
+   ⚠️ V1 não confirmada ao vivo. */
 
 const formasPagamento: { key: FormaPagamento; label: string; icon: string }[] = [
   { key: "dinheiro", label: "Dinheiro", icon: "💵" },
@@ -53,17 +54,17 @@ type Step = "revisao" | "rateio" | "pagamento" | "resumo";
 type ModoRateio = "nenhum" | "igual" | "itens";
 
 interface Props {
-  mesa: Mesa;
-  comandaId: string;
+  mesa: MesaV1;
+  pedidoId: string;
   onFechar: () => void;
   onContaFechada: (mesaId: string) => void;
 }
 
-export function FecharContaModal({ mesa, comandaId, onFechar, onContaFechada }: Props) {
+export function FecharContaModal({ mesa, pedidoId, onFechar, onContaFechada }: Props) {
   const { usuario } = useSessionStore();
-  const { data: comanda, isLoading } = useComanda(comandaId);
-  const { data: produtos } = useProdutos();
-  const atualizarMesa = useAtualizarMesa();
+  const { data: comanda, isLoading } = usePedidoV1(pedidoId);
+  const { data: produtos } = useProdutosV1();
+  const fecharMesa = useFecharMesaV1();
   const registrarVenda = useCaixaStore((s) => s.registrarVenda);
   const sessaoAberta = useCaixaStore((s) => (usuario ? s.sessaoAberta(usuario.id) : null));
 
@@ -83,7 +84,7 @@ export function FecharContaModal({ mesa, comandaId, onFechar, onContaFechada }: 
 
   const nomeProduto = (produtoId: string) => produtos?.find((p) => p.id === produtoId)?.nome ?? "Produto";
 
-  const itens = useMemo(() => comanda?.item_comandas ?? [], [comanda]);
+  const itens = useMemo(() => comanda?.itens ?? [], [comanda]);
 
   const totais = useMemo(() => {
     let subtotal = 0;
@@ -184,8 +185,9 @@ export function FecharContaModal({ mesa, comandaId, onFechar, onContaFechada }: 
           .filter((t) => !t.recusada)
           .map((t) => ({ id: t.id, forma: t.forma, valor: t.valor }))
       );
+      const formaPrincipal = pagamentos[0]?.forma ?? "dinheiro";
       registrarVenda(usuario.id, {
-        comanda_id: comandaId,
+        comanda_id: pedidoId,
         mesa_numero: mesa.numero,
         subtotal: totais.subtotal,
         descontos: totais.descontos,
@@ -195,13 +197,14 @@ export function FecharContaModal({ mesa, comandaId, onFechar, onContaFechada }: 
         pagamentos,
       });
 
-      /* Único efeito real no backend: libera a mesa. Ainda não existe
-         endpoint pra marcar a comanda como paga — ver INTEGRACAO_API.md. */
-      await atualizarMesa.mutateAsync({ id: mesa.id, payload: { status: "livre" } });
+      /* Único efeito real no backend: fecha a conta da mesa na v1
+         (PATCH /api/v1/cliente/mesas/:id/fechar). Passa a forma de
+         pagamento principal (primeira aprovada). ⚠️ V1 não confirmada. */
+      await fecharMesa.mutateAsync({ id: mesa.id, payload: { forma_pagamento: formaPrincipal } });
       setFechado(true);
       setStep("resumo");
     } catch {
-      toast.error("Erro ao liberar a mesa", "A venda foi registrada, mas tente liberar a mesa de novo.");
+      toast.error("Erro ao fechar a conta", "A venda foi registrada, mas tente fechar a conta de novo.");
     } finally {
       setFinalizando(false);
     }
@@ -239,7 +242,7 @@ export function FecharContaModal({ mesa, comandaId, onFechar, onContaFechada }: 
           <>
             <div className="p-5 border-b border-neutral-100">
               <h2 className="font-bold text-neutral-900 text-lg">Fechar conta</h2>
-              <p className="text-sm text-neutral-500">Mesa {mesa.numero} · Comanda #{comanda.numero ?? comanda.id.slice(0, 8)}</p>
+              <p className="text-sm text-neutral-500">Mesa {mesa.numero} · Pedido #{comanda.id.slice(0, 8)}</p>
             </div>
 
             <div className="overflow-y-auto flex-1 p-5 flex flex-col gap-4">
@@ -567,7 +570,7 @@ export function FecharContaModal({ mesa, comandaId, onFechar, onContaFechada }: 
                 <div className="text-center mb-3">
                   <p className="font-bold text-sm">PRATTO</p>
                   <p className="text-neutral-500">────────────────</p>
-                  <p>Mesa {mesa.numero} · Comanda #{comanda?.numero ?? comanda?.id.slice(0, 8)}</p>
+                  <p>Mesa {mesa.numero} · Pedido #{comanda?.id.slice(0, 8)}</p>
                   <p>{formatarHora(new Date().toISOString())}</p>
                   <p className="text-neutral-500">────────────────</p>
                 </div>

@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Produto } from "@/types/domain";
-import { CriarProdutoPayload } from "@/types/api";
+import { Categoria, Produto } from "@/types/domain";
+import { V1CriarProdutoPayload } from "@/types/api";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 
 interface Props {
   produto?: Produto | null;
-  onSalvar: (dados: CriarProdutoPayload) => void;
+  /* Categorias da superfície V1 (/api/v1/cliente/categorias). Quando
+     vazio, o campo de categoria não aparece. */
+  categorias?: Categoria[];
+  onSalvar: (dados: V1CriarProdutoPayload) => void;
   onFechar: () => void;
   onExcluir?: () => void;
   salvando?: boolean;
@@ -20,12 +23,14 @@ type FormState = {
   preco: string;
   imagem: string;
   ativo: boolean;
+  exibirNaVitrine: boolean;
+  categoriaId: string;
 };
 
 /* O componente que renderiza este modal deve passar uma `key` (ex: produto?.id ?? "novo")
    pra garantir que o formulário reinicie ao trocar de produto — sem isso, o estado
    interno não se atualiza sozinho quando a prop `produto` muda. */
-export function ProdutoFormModal({ produto, onSalvar, onFechar, onExcluir, salvando }: Props) {
+export function ProdutoFormModal({ produto, categorias = [], onSalvar, onFechar, onExcluir, salvando }: Props) {
   const isEditing = !!produto;
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -35,20 +40,26 @@ export function ProdutoFormModal({ produto, onSalvar, onFechar, onExcluir, salva
     preco: produto ? String(produto.preco) : "",
     imagem: produto?.foto_url ?? "",
     ativo: produto?.ativo ?? true,
+    exibirNaVitrine: produto?.exibir_na_vitrine ?? true,
+    categoriaId: produto?.categoria_id ?? "",
   });
 
-  const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+  const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   function handleSalvar() {
     const preco = parseFloat(form.preco.replace(",", "."));
     if (!form.nome.trim() || isNaN(preco)) return;
+    /* Payload da superfície V1 — nomes em português (a `/api/*` usava
+       name/price/active). ⚠️ V1 não confirmada ao vivo. */
     onSalvar({
-      name: form.nome.trim(),
-      description: form.descricao.trim() || undefined,
-      price: preco,
+      nome: form.nome.trim(),
+      descricao: form.descricao.trim() || undefined,
+      preco,
       foto_url: form.imagem.trim() || undefined,
-      active: form.ativo,
+      ativo: form.ativo,
+      exibir_na_vitrine: form.exibirNaVitrine,
+      categoria_id: form.categoriaId || null,
     });
   }
 
@@ -128,6 +139,34 @@ export function ProdutoFormModal({ produto, onSalvar, onFechar, onExcluir, salva
             inputMode="decimal"
             theme="team"
           />
+
+          {categorias.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-neutral-700">Categoria</label>
+              <select
+                className="input-field"
+                value={form.categoriaId}
+                onChange={set("categoriaId")}
+              >
+                <option value="">Sem categoria</option>
+                {categorias.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <label className="flex items-center justify-between cursor-pointer select-none">
+            <span className="text-sm text-neutral-700">Exibir na vitrine pública</span>
+            <div
+              className={`relative w-10 h-6 rounded-full transition-colors ${form.exibirNaVitrine ? "bg-green-500" : "bg-neutral-300"}`}
+              onClick={() => setForm((f) => ({ ...f, exibirNaVitrine: !f.exibirNaVitrine }))}
+            >
+              <div
+                className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.exibirNaVitrine ? "translate-x-5" : "translate-x-1"}`}
+              />
+            </div>
+          </label>
         </div>
 
         <div className="p-4 border-t border-neutral-100 flex flex-col gap-2">

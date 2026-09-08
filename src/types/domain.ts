@@ -144,6 +144,109 @@ export interface PedidoPublico {
   items: ItemPedidoPublico[];
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   DOMÍNIO DA SUPERFÍCIE V1  (`/api/v1/cliente/*` e `/api/v1/publico/*`)
+
+   ⚠️ NÃO CONFIRMADO AO VIVO — shapes inferidos dos exemplos do Insomnia
+   (só há corpo de REQUEST no arquivo; nenhum exemplo de RESPONSE). Os
+   campos abaixo são o palpite mais razoável; ao rodar, alinhe com o JSON
+   real que o backend devolve. Decimais provavelmente vêm como string
+   (padrão do Rails) — normalizar com toNumber() na borda.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+export interface Categoria {
+  id: string;
+  nome: string;
+  descricao?: string | null;
+  ordem?: number;
+  ativa: boolean;
+}
+
+/* GET/PUT /api/v1/cliente/restaurante — visão completa (staff). */
+export interface RestauranteConfig {
+  id: string;
+  slug: string;
+  nome: string;
+  descricao?: string | null;
+  telefone?: string | null;
+  taxa_servico?: number | null;
+  cor_primaria?: string | null;
+  logo_url?: string | null;
+  chave_pix?: string | null;
+  ativo: boolean;
+  horarios?: Record<string, string> | null;
+}
+
+/* GET /api/v1/publico/restaurantes/:slug — visão pública (enxuta). */
+export interface RestaurantePublico {
+  slug: string;
+  nome: string;
+  descricao?: string | null;
+  telefone?: string | null;
+  taxa_servico?: number | null;
+  cor_primaria?: string | null;
+  logo_url?: string | null;
+  chave_pix?: string | null;
+  horarios?: Record<string, string> | null;
+}
+
+export interface MesaV1 {
+  id: string;
+  numero: number;
+  capacidade?: number | null;
+  /* Insomnia usa "livre" no exemplo de criar; abrir/fechar sugerem também
+     "ocupada"/"fechada". Mantido como string até confirmar o enum. */
+  status: string;
+}
+
+export interface ItemPedidoV1 {
+  id: string;
+  produto_id: string;
+  quantidade: number;
+  preco_unitario: number;
+  observacao?: string | null;
+  status?: string;
+  produto?: { nome: string; preco?: number | string };
+}
+
+export interface PedidoV1 {
+  id: string;
+  tipo: string;
+  mesa_id?: string | null;
+  status: string;
+  observacao?: string | null;
+  total: number;
+  nome_cliente?: string | null;
+  telefone_cliente?: string | null;
+  endereco_entrega?: EnderecoEntrega | null;
+  codigo_rastreio?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  itens?: ItemPedidoV1[];
+}
+
+/* GET /api/v1/cliente/dashboard — nenhum exemplo de shape no Insomnia.
+   Campos abaixo são o mínimo que a tela de dashboard usa hoje (derivados
+   de outros endpoints); todos opcionais até o backend confirmar os
+   nomes. */
+export interface DashboardData {
+  faturamento_hoje?: number;
+  pedidos_hoje?: number;
+  ticket_medio?: number;
+  mesas_abertas?: number;
+  vendas_7_dias?: { data: string; total: number }[];
+  mais_vendidos?: { produto_id: string; nome: string; quantidade: number; total: number }[];
+}
+
+/* Conta de cliente (comprador) — /api/public/storefront/:slug/customers +
+   /me. Token próprio, separado do de staff. */
+export interface ClienteConta {
+  id: string;
+  nome: string;
+  email: string;
+  telefone?: string;
+}
+
 /* ───────────────────────── Módulo de caixa ─────────────────────────────
    Sem endpoint no backend ainda (sessão de caixa, split de pagamento,
    rateio) — simulado 100% no front (Zustand + localStorage), desenhado

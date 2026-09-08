@@ -27,6 +27,10 @@ export function useOrders({ onNovoPedido, onStatusAtualizado }: UseOrdersOptions
   const connectRef = useRef<() => void>(() => {});
 
   const invalidate = useCallback(() => {
+    /* Chaves da superfície V1 (em uso) + as antigas (fallback/telas
+       ainda não migradas). */
+    qc.invalidateQueries({ queryKey: ["v1", "pedidos"] });
+    qc.invalidateQueries({ queryKey: ["v1", "mesas"] });
     qc.invalidateQueries({ queryKey: ["kitchen-orders"] });
     qc.invalidateQueries({ queryKey: ["mesas"] });
     qc.invalidateQueries({ queryKey: ["comanda"] });

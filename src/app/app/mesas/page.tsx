@@ -2,12 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMesas, useAtualizarMesa } from "@/lib/api/queries/mesas";
-import { useAbrirComanda, useComanda, useRemoverItemComanda } from "@/lib/api/queries/comandas";
-import { useProdutos } from "@/lib/api/queries/menu";
+import { useMesasV1, useAbrirMesaV1 } from "@/lib/api/queries/v1/mesas";
+import { usePedidosV1 } from "@/lib/api/queries/v1/pedidos";
 import { useSessionStore } from "@/lib/store/session";
-import { Mesa } from "@/types/domain";
-import { TableStatusBadge, ItemComandaStatusBadge } from "@/components/ui/Badge";
+import { MesaV1, PedidoV1 } from "@/types/domain";
+import { TableStatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { PageLoader } from "@/components/ui/Spinner";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -17,29 +16,46 @@ import { formatBRL } from "@/lib/utils";
 import { extractErrorMessage } from "@/lib/api/client";
 import { toast } from "@/components/ui/Toast";
 
-const statusColors: Record<Mesa["status"], string> = {
-  livre: "bg-green-50 border-green-200 hover:bg-green-100",
-  ocupada: "bg-amber-50 border-amber-200 hover:bg-amber-100",
-  conta_pedida: "bg-blue-50 border-blue-200 hover:bg-blue-100",
-};
+/* Migrado pra superfície V1 — GET /api/v1/cliente/mesas + PATCH
+   /mesas/:id/abrir. O "pedido em aberto" da mesa é resolvido cruzando
+   GET /api/v1/cliente/pedidos?tipo=mesa por `mesa_id` (a v1 não embute
+   um `active_command` na mesa como a `/api/tables` fazia).
 
-const statusTexto: Record<Mesa["status"], string> = {
-  livre: "text-green-700",
-  ocupada: "text-amber-700",
-  conta_pedida: "text-blue-700",
+   ⚠️ V1 NÃO CONFIRMADA AO VIVO:
+   - o enum de status da mesa é chute (livre / ocupada / conta_pedida /
+     fechada). Qualquer coisa != "livre" é tratada como ocupada.
+   - a v1 não tem endpoint pra "solicitar conta" (setar status
+     intermediário) — esse botão saiu; o caixa fecha direto.
+   - abrir mesa NÃO cria pedido: o pedido nasce no PDV (pedidos/novo),
+     que na v1 manda POST /pedidos já com os itens. */
+
+const CORES: Record<string, { card: string; texto: string }> = {
+  livre: { card: "bg-green-50 border-green-200 hover:bg-green-100", texto: "text-green-700" },
+  ocupada: { card: "bg-amber-50 border-amber-200 hover:bg-amber-100", texto: "text-amber-700" },
+  conta_pedida: { card: "bg-blue-50 border-blue-200 hover:bg-blue-100", texto: "text-blue-700" },
+  fechada: { card: "bg-neutral-50 border-neutral-200 hover:bg-neutral-100", texto: "text-neutral-600" },
 };
+const cor = (status: string) => CORES[status] ?? CORES.ocupada;
+
+function pedidoAberto(pedidos: PedidoV1[] | undefined, mesa: MesaV1): PedidoV1 | undefined {
+  return (pedidos ?? []).find(
+    (p) =>
+      String(p.mesa_id ?? "") === String(mesa.id) &&
+      !["entregue", "fechado", "cancelado", "pago"].includes(p.status),
+  );
+}
 
 export default function MesasPage() {
-  const { usuario, hasRole } = useSessionStore();
+  const { hasRole } = useSessionStore();
   const podeFecharConta = hasRole(["caixa", "admin"]);
 
-  const { data: mesas, isLoading, isError, refetch } = useMesas();
-  const atualizarMesa = useAtualizarMesa();
-  const abrirComanda = useAbrirComanda();
+  const { data: mesas, isLoading, isError, refetch } = useMesasV1();
+  const { data: pedidosMesa } = usePedidosV1({ tipo: "mesa" });
+  const abrirMesa = useAbrirMesaV1();
 
-  const [mesaSelecionada, setMesaSelecionada] = useState<Mesa | null>(null);
-  const [mesaVerPedidos, setMesaVerPedidos] = useState<Mesa | null>(null);
-  const [fecharContaMesa, setFecharContaMesa] = useState<Mesa | null>(null);
+  const [mesaSelecionada, setMesaSelecionada] = useState<MesaV1 | null>(null);
+  const [mesaVerPedidos, setMesaVerPedidos] = useState<MesaV1 | null>(null);
+  const [fecharContaMesa, setFecharContaMesa] = useState<MesaV1 | null>(null);
 
   if (isLoading) return <PageLoader />;
   if (isError || !mesas) return <ErrorState onRetry={() => refetch()} />;
@@ -53,40 +69,18 @@ export default function MesasPage() {
     toast.success("Conta fechada!", "A mesa está livre para novos clientes.");
   }
 
-  async function abrirMesa(mesa: Mesa) {
-    if (!usuario?.restaurante_id) {
-      toast.error("Erro ao abrir mesa", "Sessão sem loja associada — faça login de novo.");
-      return;
-    }
-    try {
-      /* Criar a comanda não muda o status da mesa sozinho (confirmado ao
-         vivo) — por isso o PATCH explícito antes. `mesa_id`/`loja_id` são
-         os nomes reais aceitos pelo POST /api/commands: o exemplo antigo
-         (table_id/attendant_id) dava 422 mesmo com ids válidos. */
-      await atualizarMesa.mutateAsync({ id: mesa.id, payload: { status: "ocupada" } });
-      await abrirComanda.mutateAsync({ mesa_id: mesa.id, loja_id: usuario.restaurante_id });
-      toast.success(`Mesa ${mesa.numero} aberta!`);
-      setMesaSelecionada(null);
-    } catch (err) {
-      toast.error("Erro ao abrir mesa", extractErrorMessage(err));
-    }
+  function handleAbrir(mesa: MesaV1) {
+    abrirMesa.mutate(mesa.id, {
+      onSuccess: () => {
+        toast.success(`Mesa ${mesa.numero} aberta!`);
+        setMesaSelecionada(null);
+      },
+      onError: (err) => toast.error("Erro ao abrir mesa", extractErrorMessage(err)),
+    });
   }
 
-  function solicitarConta(mesa: Mesa) {
-    atualizarMesa.mutate(
-      { id: mesa.id, payload: { status: "conta_pedida" } },
-      {
-        onSuccess: () => {
-          toast.info("Conta solicitada", `Mesa ${mesa.numero} aguardando o caixa.`);
-          setMesaSelecionada(null);
-        },
-        onError: () => toast.error("Erro ao solicitar conta", "Tente novamente."),
-      }
-    );
-  }
-
-  function verPedidos(mesa: Mesa) {
-    if (!mesa.active_command) {
+  function verPedidos(mesa: MesaV1) {
+    if (!pedidoAberto(pedidosMesa, mesa)) {
       toast.info("Sem pedidos ainda", `A mesa ${mesa.numero} não tem nenhum pedido lançado.`);
       return;
     }
@@ -94,11 +88,12 @@ export default function MesasPage() {
     setMesaVerPedidos(mesa);
   }
 
+  const fecharPedido = fecharContaMesa ? pedidoAberto(pedidosMesa, fecharContaMesa) : undefined;
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-5">
       {podeFecharConta && <CaixaSessaoBar />}
 
-      {/* Resumo */}
       <div className="grid grid-cols-3 gap-3 mb-6">
         <div className="bg-green-50 rounded-xl p-3 text-center border border-green-100">
           <p className="text-2xl font-bold text-green-700">{livres}</p>
@@ -114,7 +109,6 @@ export default function MesasPage() {
         </div>
       </div>
 
-      {/* Grid de mesas */}
       {mesas.length === 0 ? (
         <div className="text-center py-16 text-neutral-400">
           <p className="text-4xl mb-3">🪑</p>
@@ -122,35 +116,35 @@ export default function MesasPage() {
         </div>
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-          {mesas.map((mesa) => (
-            <button
-              key={mesa.id}
-              onClick={() => setMesaSelecionada(mesa)}
-              className={`relative p-4 rounded-2xl border-2 text-left transition-all active:scale-95 ${statusColors[mesa.status]}`}
-            >
-              <p className={`text-2xl font-bold ${statusTexto[mesa.status]}`}>{mesa.numero}</p>
-              {/* Caixa problema #2: ver valor da conta assim que clica na mesa —
-                  já dá pra mostrar aqui mesmo, sem chamada extra. */}
-              {podeFecharConta && mesa.active_command && (
-                <p className="text-xs text-neutral-500 mt-0.5 truncate">{formatBRL(mesa.active_command.total)}</p>
-              )}
-              <div className="mt-2">
-                <TableStatusBadge status={mesa.status} />
-              </div>
-            </button>
-          ))}
+          {mesas.map((mesa) => {
+            const aberto = pedidoAberto(pedidosMesa, mesa);
+            return (
+              <button
+                key={mesa.id}
+                onClick={() => setMesaSelecionada(mesa)}
+                className={`relative p-4 rounded-2xl border-2 text-left transition-all active:scale-95 ${cor(mesa.status).card}`}
+              >
+                <p className={`text-2xl font-bold ${cor(mesa.status).texto}`}>{mesa.numero}</p>
+                {podeFecharConta && aberto && (
+                  <p className="text-xs text-neutral-500 mt-0.5 truncate">{formatBRL(aberto.total)}</p>
+                )}
+                <div className="mt-2">
+                  <TableStatusBadge status={mesa.status} />
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {/* Modal de mesa */}
       {mesaSelecionada && (
         <MesaModal
           mesa={mesaSelecionada}
+          pedido={pedidoAberto(pedidosMesa, mesaSelecionada)}
           podeFecharConta={podeFecharConta}
-          loading={atualizarMesa.isPending || abrirComanda.isPending}
+          loading={abrirMesa.isPending}
           onFechar={() => setMesaSelecionada(null)}
-          onAbrirMesa={abrirMesa}
-          onSolicitarConta={solicitarConta}
+          onAbrirMesa={handleAbrir}
           onVerPedidos={verPedidos}
           onFecharConta={(m) => {
             setMesaSelecionada(null);
@@ -159,16 +153,18 @@ export default function MesasPage() {
         />
       )}
 
-      {/* Modal ver pedidos (garçom #2) */}
       {mesaVerPedidos && (
-        <VerPedidosModal mesa={mesaVerPedidos} onFechar={() => setMesaVerPedidos(null)} />
+        <VerPedidosModal
+          mesa={mesaVerPedidos}
+          pedido={pedidoAberto(pedidosMesa, mesaVerPedidos)}
+          onFechar={() => setMesaVerPedidos(null)}
+        />
       )}
 
-      {/* Modal fechar conta (caixa) */}
-      {fecharContaMesa && fecharContaMesa.active_command && (
+      {fecharContaMesa && fecharPedido && (
         <FecharContaModal
           mesa={fecharContaMesa}
-          comandaId={fecharContaMesa.active_command.id}
+          pedidoId={fecharPedido.id}
           onFechar={() => setFecharContaMesa(null)}
           onContaFechada={onContaFechada}
         />
@@ -180,29 +176,25 @@ export default function MesasPage() {
 /* ─── Modal de ações da mesa ─── */
 function MesaModal({
   mesa,
+  pedido,
   podeFecharConta,
   loading,
   onFechar,
   onAbrirMesa,
-  onSolicitarConta,
   onVerPedidos,
   onFecharConta,
 }: {
-  mesa: Mesa;
+  mesa: MesaV1;
+  pedido: PedidoV1 | undefined;
   podeFecharConta: boolean;
   loading: boolean;
   onFechar: () => void;
-  onAbrirMesa: (m: Mesa) => void;
-  onSolicitarConta: (m: Mesa) => void;
-  onVerPedidos: (m: Mesa) => void;
-  onFecharConta: (m: Mesa) => void;
+  onAbrirMesa: (m: MesaV1) => void;
+  onVerPedidos: (m: MesaV1) => void;
+  onFecharConta: (m: MesaV1) => void;
 }) {
   const router = useRouter();
-
-  function irParaNovoPedido() {
-    if (!mesa.active_command) return;
-    router.push(`/app/pedidos/novo?comanda_id=${mesa.active_command.id}&mesa_num=${mesa.numero}`);
-  }
+  const ocupada = mesa.status !== "livre";
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" onClick={onFechar}>
@@ -215,49 +207,41 @@ function MesaModal({
           <h2 className="text-xl font-bold text-neutral-900">Mesa {mesa.numero}</h2>
           <TableStatusBadge status={mesa.status} />
         </div>
-        {podeFecharConta && mesa.active_command && (
-          <p className="text-sm text-neutral-500 mb-4">Conta atual: {formatBRL(mesa.active_command.total)}</p>
+        {podeFecharConta && pedido && (
+          <p className="text-sm text-neutral-500 mb-4">Conta atual: {formatBRL(pedido.total)}</p>
         )}
 
         <div className="flex flex-col gap-2.5 mt-4">
-          {mesa.status === "livre" && (
+          {!ocupada && (
             <Button theme="team" fullWidth size="lg" loading={loading} onClick={() => onAbrirMesa(mesa)}>
               Abrir mesa
             </Button>
           )}
 
-          {mesa.status !== "livre" && (
+          {ocupada && (
             <>
-              {mesa.status === "ocupada" && (
-                <Button theme="team" fullWidth onClick={irParaNovoPedido}>
-                  + Novo pedido
-                </Button>
-              )}
+              <Button
+                theme="team"
+                fullWidth
+                onClick={() => router.push(`/app/pedidos/novo?mesa_id=${mesa.id}&mesa_num=${mesa.numero}`)}
+              >
+                + Novo pedido
+              </Button>
               <Button theme="team" variant="secondary" fullWidth onClick={() => onVerPedidos(mesa)}>
                 Ver pedidos
               </Button>
-              {mesa.status === "ocupada" && (
-                <Button theme="team" variant="ghost" fullWidth onClick={() => onSolicitarConta(mesa)}>
-                  Solicitar conta
+              {podeFecharConta ? (
+                <Button theme="team" fullWidth disabled={!pedido} onClick={() => onFecharConta(mesa)}>
+                  Fechar conta
                 </Button>
-              )}
-              {mesa.status === "conta_pedida" && (
-                podeFecharConta ? (
-                  <Button theme="team" fullWidth onClick={() => onFecharConta(mesa)}>
-                    Fechar conta
-                  </Button>
-                ) : (
-                  <p className="text-sm text-neutral-400 text-center py-2">Aguardando o caixa fechar a conta.</p>
-                )
+              ) : (
+                <p className="text-sm text-neutral-400 text-center py-2">Aguardando o caixa fechar a conta.</p>
               )}
             </>
           )}
         </div>
 
-        <button
-          onClick={onFechar}
-          className="mt-4 w-full text-center text-sm text-neutral-400 hover:text-neutral-600"
-        >
+        <button onClick={onFechar} className="mt-4 w-full text-center text-sm text-neutral-400 hover:text-neutral-600">
           Fechar
         </button>
       </div>
@@ -265,29 +249,19 @@ function MesaModal({
   );
 }
 
-/* ─── Ver pedidos da mesa (garçom #2) — mostra os itens de verdade,
-   não redireciona pra "novo pedido" ─── */
-function VerPedidosModal({ mesa, onFechar }: { mesa: Mesa; onFechar: () => void }) {
-  const comandaId = mesa.active_command?.id;
-  const { data: comanda, isLoading } = useComanda(comandaId);
-  const { data: produtos } = useProdutos();
-  const removerItem = useRemoverItemComanda();
-  const [confirmandoId, setConfirmandoId] = useState<string | null>(null);
-  const nomeProduto = (id: string) => produtos?.find((p) => p.id === id)?.nome ?? "Produto";
-
-  function cancelarItem(itemId: string) {
-    if (!comandaId) return;
-    removerItem.mutate(
-      { comandaId, itemId },
-      {
-        onSuccess: () => {
-          toast.success("Item cancelado.");
-          setConfirmandoId(null);
-        },
-        onError: (err) => toast.error("Erro ao cancelar item", extractErrorMessage(err)),
-      }
-    );
-  }
+/* ─── Ver pedidos da mesa — itens do pedido V1 em aberto. A v1 não
+   documenta cancelar item individual, então essa ação saiu (era
+   DELETE /api/commands/:id/items/:id na superfície antiga). ─── */
+function VerPedidosModal({
+  mesa,
+  pedido,
+  onFechar,
+}: {
+  mesa: MesaV1;
+  pedido: PedidoV1 | undefined;
+  onFechar: () => void;
+}) {
+  const itens = pedido?.itens ?? [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" onClick={onFechar}>
@@ -300,53 +274,20 @@ function VerPedidosModal({ mesa, onFechar }: { mesa: Mesa; onFechar: () => void 
           <h2 className="font-bold text-neutral-900 text-lg">Pedidos da mesa {mesa.numero}</h2>
         </div>
         <div className="overflow-y-auto flex-1 p-5">
-          {isLoading ? (
-            <PageLoader />
-          ) : !comanda?.item_comandas?.length ? (
+          {itens.length === 0 ? (
             <p className="text-sm text-neutral-400 text-center py-8">Nenhum item lançado ainda.</p>
           ) : (
             <ul className="flex flex-col gap-3">
-              {comanda.item_comandas.map((item) => (
-                <li key={item.id} className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <span className="text-sm font-semibold text-team-600">{item.quantidade}×</span>
-                      <span className="text-sm text-neutral-900 ml-1">{nomeProduto(item.produto_id)}</span>
-                      {item.observacao && <p className="text-xs text-neutral-400">{item.observacao}</p>}
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <ItemComandaStatusBadge status={item.status} />
-                      <button
-                        onClick={() => setConfirmandoId(item.id)}
-                        className="text-neutral-300 hover:text-red-500 transition-colors"
-                        aria-label={`Cancelar ${nomeProduto(item.produto_id)}`}
-                      >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
-                        </svg>
-                      </button>
-                    </div>
+              {itens.map((item) => (
+                <li key={item.id} className="flex items-center justify-between gap-2">
+                  <div>
+                    <span className="text-sm font-semibold text-team-600">{item.quantidade}×</span>
+                    <span className="text-sm text-neutral-900 ml-1">{item.produto?.nome ?? "Produto"}</span>
+                    {item.observacao && <p className="text-xs text-neutral-400">{item.observacao}</p>}
                   </div>
-                  {confirmandoId === item.id && (
-                    <div className="flex items-center justify-between gap-2 bg-red-50 rounded-lg px-3 py-2">
-                      <span className="text-xs text-red-600">Cancelar este item da conta?</span>
-                      <div className="flex gap-2 flex-shrink-0">
-                        <button
-                          onClick={() => setConfirmandoId(null)}
-                          className="text-xs font-medium text-neutral-500 hover:text-neutral-700"
-                        >
-                          Voltar
-                        </button>
-                        <button
-                          onClick={() => cancelarItem(item.id)}
-                          disabled={removerItem.isPending}
-                          className="text-xs font-semibold text-red-600 hover:text-red-700 disabled:opacity-60"
-                        >
-                          Confirmar
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  <span className="text-sm text-neutral-500 flex-shrink-0">
+                    {formatBRL(item.preco_unitario * item.quantidade)}
+                  </span>
                 </li>
               ))}
             </ul>

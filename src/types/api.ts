@@ -139,3 +139,167 @@ export interface PedidoPublicoConfirmacao {
   codigo_rastreio: string;
   total: number | string;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SUPERFÍCIE V1  (`/api/v1/cliente/*` e `/api/v1/publico/*`)
+
+   ⚠️ NÃO CONFIRMADO AO VIVO. Toda esta seção foi derivada dos corpos de
+   exemplo do arquivo Insomnia `insomnia-api-atendimento.json`, não de
+   teste real contra o backend. A sessão de 2026-08-24 documentou que os
+   exemplos do Insomnia erraram vários payloads na superfície antiga
+   (`/api/*`) — o mesmo risco vale aqui. Ao validar rodando, ajuste os
+   nomes/tipos de campo conforme o controller reclamar.
+
+   Convenção da v1: nomes de campo em português tanto na leitura quanto
+   na escrita (ao contrário da `/api/*`, que lê em pt e escreve em en).
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Login — mesmo endpoint já em uso pelo app (queries/auth.ts). Repetido
+   aqui só pra deixar a superfície v1 completa e coesa. */
+export interface V1LoginPayload {
+  email: string;
+  senha: string;
+}
+
+/* Restaurante — GET/PUT /api/v1/cliente/restaurante (restaurante único
+   do token; sem :id na rota). */
+export interface V1AtualizarRestaurantePayload {
+  nome?: string;
+  descricao?: string;
+  telefone?: string;
+  taxa_servico?: number;
+  cor_primaria?: string;
+  logo_url?: string;
+  chave_pix?: string;
+  ativo?: boolean;
+  /* Mapa dia→faixa de horário, ex: { "segunda": "18:00-23:00" }. Shape
+     exato não confirmado. */
+  horarios?: Record<string, string>;
+}
+
+/* Categorias — CRUD /api/v1/cliente/categorias (não existe na `/api/*`). */
+export interface V1CriarCategoriaPayload {
+  nome: string;
+  descricao?: string;
+  ordem?: number;
+  ativa?: boolean;
+}
+export type V1AtualizarCategoriaPayload = Partial<V1CriarCategoriaPayload>;
+
+/* Produtos — CRUD /api/v1/cliente/produtos. Diferente da `/api/products`:
+   escrita também em português e com categoria_id/ordem/exibir_na_vitrine. */
+export interface V1CriarProdutoPayload {
+  nome: string;
+  descricao?: string;
+  preco: number;
+  ativo?: boolean;
+  exibir_na_vitrine?: boolean;
+  categoria_id?: string | null;
+  foto_url?: string;
+  ordem?: number;
+}
+export type V1AtualizarProdutoPayload = Partial<V1CriarProdutoPayload>;
+
+/* Usuários — /api/v1/cliente/usuarios. Campo do papel é `perfil` (não
+   `role` como na escrita da `/api/users`). */
+export interface V1CriarUsuarioPayload {
+  nome: string;
+  email: string;
+  senha: string;
+  perfil: UserRole;
+}
+export interface V1AtualizarUsuarioPayload {
+  nome?: string;
+  email?: string;
+  perfil?: UserRole;
+  ativo?: boolean;
+}
+
+/* Mesas — /api/v1/cliente/mesas. Campos em português (numero/capacidade/
+   status) e ações dedicadas abrir/fechar (a `/api/tables` não tem). */
+export interface V1CriarMesaPayload {
+  numero: number;
+  capacidade?: number;
+  status?: string;
+}
+export interface V1AtualizarMesaPayload {
+  numero?: number;
+  capacidade?: number;
+}
+/* PATCH /api/v1/cliente/mesas/:id/fechar — corpo com a forma de pagamento
+   do fechamento da conta. */
+export interface V1FecharMesaPayload {
+  forma_pagamento: string;
+}
+
+/* Pedidos — /api/v1/cliente/pedidos. Ao contrário da `/api/commands` (que
+   nasce vazia e recebe itens um a um), aqui o pedido é criado JÁ com a
+   lista de itens no mesmo corpo. */
+export interface V1ItemPedidoPayload {
+  produto_id: string;
+  quantidade: number;
+  observacao?: string;
+}
+export interface V1CriarPedidoPayload {
+  tipo: string;
+  mesa_id?: string | number | null;
+  observacao?: string;
+  itens: V1ItemPedidoPayload[];
+}
+export interface V1AtualizarStatusPedidoPayload {
+  status: string;
+}
+
+/* Impressão — POST /api/v1/cliente/impressao. Enfileira a impressão de um
+   pedido no backend (a `/api/*` não tem isso — o app simula com
+   window.print). */
+export interface V1ImpressaoPayload {
+  pedido_id: string | number;
+}
+
+/* Vitrine pública v1 — POST /api/v1/publico/restaurantes/:slug/pedidos.
+   Aceita pedido de qualquer `tipo` (o checkout público da `/api/*` só
+   aceitava delivery). endereco_entrega segue sendo objeto. */
+export interface V1CriarPedidoPublicoPayload {
+  tipo: string;
+  nome_cliente: string;
+  telefone_cliente: string;
+  observacao?: string;
+  endereco_entrega?: EnderecoEntregaPayload;
+  itens: V1ItemPedidoPayload[];
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CONTA DE CLIENTE  (`/api/public/storefront/:slug/customers*` e `/me`)
+
+   ⚠️ NÃO CONFIRMADO AO VIVO. Derivado dos exemplos do Insomnia. Hoje o
+   app fingia isso 100% local (lib/store/clienteCadastro.ts +
+   historicoPedidos.ts). Usa um token PRÓPRIO (`<token_cliente>`),
+   separado do token de staff.
+   ═══════════════════════════════════════════════════════════════════════ */
+export interface CriarClientePayload {
+  nome: string;
+  email: string;
+  telefone: string;
+  senha: string;
+}
+export interface LoginClientePayload {
+  email: string;
+  senha: string;
+}
+/* Resposta do cadastro/login do cliente. Nem o nome do campo do token
+   (`token`? `jwt`?) nem o do objeto do cliente (`customer`? `cliente`?)
+   estão confirmados — o parsing em queries/customers.ts tolera as duas
+   formas. */
+export interface ClienteAuthResponse {
+  token?: string;
+  jwt?: string;
+  customer?: ClienteContaBruta;
+  cliente?: ClienteContaBruta;
+}
+export interface ClienteContaBruta {
+  id: string;
+  nome: string;
+  email: string;
+  telefone?: string;
+}

@@ -5,10 +5,10 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useCartStore } from "@/lib/store/cart";
-import { useClienteCadastroStore } from "@/lib/store/clienteCadastro";
+import { useClienteSessaoStore } from "@/lib/store/clienteSessao";
 import { useHistoricoPedidosStore } from "@/lib/store/historicoPedidos";
 import { useMounted } from "@/lib/hooks/useMounted";
-import { useCriarPedidoPublico } from "@/lib/api/queries/publicOrders";
+import { useCriarPedidoPublicoV1 } from "@/lib/api/queries/v1/publico";
 import { extractErrorMessage } from "@/lib/api/client";
 import { formatBRL } from "@/lib/utils";
 import { toast } from "@/components/ui/Toast";
@@ -54,10 +54,10 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
      HTML do servidor. */
   const [nomeDigitado, setNomeDigitado] = useState<string | null>(null);
   const [telefoneDigitado, setTelefoneDigitado] = useState<string | null>(null);
-  const cadastro = useClienteCadastroStore();
+  const sessao = useClienteSessaoStore();
   const mounted = useMounted();
-  const nomeCliente = nomeDigitado ?? (mounted ? cadastro.nome : "");
-  const telefoneCliente = telefoneDigitado ?? (mounted ? cadastro.telefone : "");
+  const nomeCliente = nomeDigitado ?? (mounted ? sessao.cliente?.nome ?? "" : "");
+  const telefoneCliente = telefoneDigitado ?? (mounted ? sessao.cliente?.telefone ?? "" : "");
   const [endereco, setEndereco] = useState<Endereco>({
     logradouro: "",
     numero: "",
@@ -68,7 +68,7 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
   });
 
   const { itens, total: getTotal, quantidadeTotal, removerItem, atualizarQuantidade, limparSacola } = useCartStore();
-  const criarPedido = useCriarPedidoPublico(slug);
+  const criarPedido = useCriarPedidoPublicoV1(slug);
   const adicionarAoHistorico = useHistoricoPedidosStore((s) => s.adicionar);
   const totalSacola = getTotal();
   const qtd = quantidadeTotal();
@@ -89,7 +89,11 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
     if (!itens.length) return;
     const itensPedido = itens;
     try {
+      /* Checkout V1 — POST /api/v1/publico/restaurantes/:slug/pedidos.
+         Aceita `tipo` e `itens` (a `/api/public/storefront/:slug/orders`
+         era só delivery e usava `items`/`product_id`). ⚠️ Não confirmada. */
       const resposta = await criarPedido.mutateAsync({
+        tipo: "delivery",
         nome_cliente: nomeCliente.trim(),
         telefone_cliente: telefoneCliente.trim(),
         endereco_entrega: {
@@ -100,20 +104,21 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
           cidade: endereco.cidade.trim(),
           cep: endereco.cep.trim(),
         },
-        items: itensPedido.map((item) => ({
-          product_id: item.produto.id,
-          quantity: item.quantidade,
+        itens: itensPedido.map((item) => ({
+          produto_id: item.produto.id,
+          quantidade: item.quantidade,
           observacao: item.observacao,
         })),
       });
 
-      setPedidoId(resposta.codigo_rastreio);
-      setPedidoConfirmado({ itens: itensPedido, total: Number(resposta.total), pagamento });
-      /* Sem isso, o pedido "some" — não tem endpoint pra listar pedidos
-         do cliente, só pra consultar um específico já sabendo o código. */
+      const rastreio = resposta.codigo_rastreio ?? resposta.id;
+      setPedidoId(rastreio);
+      setPedidoConfirmado({ itens: itensPedido, total: resposta.total, pagamento });
+      /* A conta de cliente já dá GET /orders (histórico real). Guardar
+         local segue como fallback offline / conta deslogada. */
       adicionarAoHistorico({
-        codigoRastreio: resposta.codigo_rastreio,
-        total: Number(resposta.total),
+        codigoRastreio: rastreio,
+        total: resposta.total,
         criadoEm: new Date().toISOString(),
       });
       limparSacola();

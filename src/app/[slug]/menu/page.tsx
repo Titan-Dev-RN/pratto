@@ -4,7 +4,9 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { usePublicProdutos, PublicProduto } from "@/lib/api/queries/publicStorefront";
+import { useProdutosPublicosV1 } from "@/lib/api/queries/v1/produtos";
+import { useRestaurantePublico } from "@/lib/api/queries/v1/restaurante";
+import { Produto as ProdutoV1 } from "@/types/domain";
 import { ProdutoLegacy as Produto } from "@/types/domain.legacy";
 import { useCartStore } from "@/lib/store/cart";
 import { Button } from "@/components/ui/Button";
@@ -22,15 +24,15 @@ import { formatBRL } from "@/lib/utils";
    Checkout (sacola/delivery) continua mock — ver INTEGRACAO_API.md — mas
    o carrinho já aceita esses produtos reais normalmente, então dá pra
    montar a sacola com preços de verdade mesmo com o envio simulado. */
-function paraProdutoDoCarrinho(p: PublicProduto, ordem: number): Produto {
+function paraProdutoDoCarrinho(p: ProdutoV1, ordem: number): Produto {
   return {
     id: p.id,
     nome: p.nome,
     descricao: p.descricao,
     preco: p.preco,
     ativo: true,
-    ordem,
-    categoria_id: "",
+    ordem: p.ordem ?? ordem,
+    categoria_id: p.categoria_id ?? "",
     restaurante_id: "",
     grupos: [],
   };
@@ -59,7 +61,8 @@ function MenuContent({ params }: { params: Promise<{ slug: string }> }) {
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
 
   const { adicionarItem, quantidadeTotal, total: getTotal, setContexto } = useCartStore();
-  const { data: produtosApi, isLoading, isError, refetch } = usePublicProdutos(slug);
+  const { data: produtosApi, isLoading, isError, refetch } = useProdutosPublicosV1(slug);
+  const { data: restaurante } = useRestaurantePublico(slug);
 
   useEffect(() => setContexto(slug), [slug, setContexto]);
 
@@ -83,7 +86,7 @@ function MenuContent({ params }: { params: Promise<{ slug: string }> }) {
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
         <div className="absolute bottom-0 left-0 right-0 px-4 py-4 text-white">
-          <h1 className="text-xl font-bold leading-tight drop-shadow">{nomeDoSlug(slug)}</h1>
+          <h1 className="text-xl font-bold leading-tight drop-shadow">{restaurante?.nome ?? nomeDoSlug(slug)}</h1>
           <p className="text-sm opacity-90 mt-1">{produtos.length} itens no cardápio</p>
         </div>
       </div>

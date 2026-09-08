@@ -3,15 +3,16 @@
 import { useState } from "react";
 import Image from "next/image";
 import {
-  useProdutos,
-  useProduto,
-  useCriarProduto,
-  useAtualizarProduto,
-  useExcluirProduto,
-} from "@/lib/api/queries/menu";
+  useProdutosV1 as useProdutos,
+  useProdutoV1 as useProduto,
+  useCriarProdutoV1 as useCriarProduto,
+  useAtualizarProdutoV1 as useAtualizarProduto,
+  useExcluirProdutoV1 as useExcluirProduto,
+} from "@/lib/api/queries/v1/produtos";
+import { useCategorias } from "@/lib/api/queries/v1/categorias";
 import { Produto } from "@/types/domain";
 import { extractErrorMessage } from "@/lib/api/client";
-import { CriarProdutoPayload } from "@/types/api";
+import { V1CriarProdutoPayload as CriarProdutoPayload } from "@/types/api";
 import { Button } from "@/components/ui/Button";
 import { PageLoader } from "@/components/ui/Spinner";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -21,6 +22,7 @@ import { toast } from "@/components/ui/Toast";
 
 export default function CardapioAdminPage() {
   const { data: produtos, isLoading, isError, refetch } = useProdutos();
+  const { data: categorias } = useCategorias();
   const criarProduto = useCriarProduto();
   const atualizarProduto = useAtualizarProduto();
   const excluirProduto = useExcluirProduto();
@@ -73,7 +75,7 @@ export default function CardapioAdminPage() {
 
   function toggleProduto(produto: Produto) {
     atualizarProduto.mutate(
-      { id: produto.id, payload: { active: !produto.ativo } },
+      { id: produto.id, payload: { ativo: !produto.ativo } },
       { onError: () => toast.error("Erro ao atualizar produto", "Tente novamente.") }
     );
   }
@@ -122,6 +124,7 @@ export default function CardapioAdminPage() {
         <ProdutoFormModal
           key={modalProduto === "novo" ? "novo" : modalProduto.id}
           produto={produtoParaEditar}
+          categorias={categorias ?? []}
           onSalvar={salvarProduto}
           onFechar={() => setModalProduto(null)}
           onExcluir={modalProduto !== "novo" ? excluirProdutoAtual : undefined}

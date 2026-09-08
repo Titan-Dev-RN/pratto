@@ -3,8 +3,8 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
-import { useProdutos } from "@/lib/api/queries/menu";
-import { useAdicionarItemComanda } from "@/lib/api/queries/comandas";
+import { useProdutosV1 as useProdutos } from "@/lib/api/queries/v1/produtos";
+import { useCriarPedidoV1 } from "@/lib/api/queries/v1/pedidos";
 import { Produto } from "@/types/domain";
 import { useComandaStore } from "@/lib/store/comanda";
 import { Button } from "@/components/ui/Button";
@@ -24,7 +24,7 @@ export default function NovoPedidoPage() {
 function NovoPedidoContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const comandaId = searchParams.get("comanda_id") ?? "";
+  const mesaId = searchParams.get("mesa_id") ?? "";
   const mesaNumero = Number(searchParams.get("mesa_num") ?? 0);
 
   const [busca, setBusca] = useState("");
@@ -33,7 +33,7 @@ function NovoPedidoContent() {
   const [enviando, setEnviando] = useState(false);
 
   const { data: produtos, isLoading, isError, refetch } = useProdutos();
-  const adicionarItemApi = useAdicionarItemComanda();
+  const criarPedido = useCriarPedidoV1();
 
   const { itens, adicionarItem, removerItem, atualizarQuantidade, total: getTotal, quantidadeTotal, limpar } =
     useComandaStore();
@@ -52,16 +52,22 @@ function NovoPedidoContent() {
   const total = getTotal();
   const qtd = quantidadeTotal();
 
+  /* V1: o pedido nasce JÁ com todos os itens numa chamada só
+     (POST /api/v1/cliente/pedidos), ao contrário da `/api/commands` que
+     recebia item a item. ⚠️ V1 não confirmada ao vivo. */
   async function enviarPedido() {
-    if (!itens.length || !comandaId) return;
+    if (!itens.length || !mesaId) return;
     setEnviando(true);
     try {
-      for (const item of itens) {
-        await adicionarItemApi.mutateAsync({
-          comandaId,
-          payload: { produto_id: item.produto.id, quantidade: item.quantidade, observacao: item.observacao },
-        });
-      }
+      await criarPedido.mutateAsync({
+        tipo: "mesa",
+        mesa_id: mesaId,
+        itens: itens.map((item) => ({
+          produto_id: item.produto.id,
+          quantidade: item.quantidade,
+          observacao: item.observacao,
+        })),
+      });
       toast.success("Pedido enviado!", `Mesa ${mesaNumero} — ${itens.length} item(s) para a cozinha.`);
       limpar();
       router.push("/app/mesas");

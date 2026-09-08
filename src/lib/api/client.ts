@@ -87,6 +87,18 @@ export async function apiPatch<T>(path: string, body: unknown, authed = true): P
   return handleResponse<T>(res);
 }
 
+/* A superfície V1 documenta os updates como PUT (a `/api/*` usa PATCH). O
+   Rails costuma rotear os dois pro mesmo #update, mas mantemos o verbo do
+   contrato. ⚠️ V1 não confirmada ao vivo. */
+export async function apiPut<T>(path: string, body: unknown, authed = true): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "PUT",
+    headers: authHeaders(authed),
+    body: JSON.stringify(body),
+  });
+  return handleResponse<T>(res);
+}
+
 export async function apiDelete<T>(path: string, authed = true): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, { method: "DELETE", headers: authHeaders(authed) });
   return handleResponse<T>(res);
@@ -111,6 +123,40 @@ export async function apiPostAbsolute<T>(path: string, body: unknown): Promise<T
 export function toNumber(value: number | string | null | undefined): number {
   if (value === null || value === undefined) return 0;
   return typeof value === "number" ? value : parseFloat(value) || 0;
+}
+
+/* ─────────────────────────── Conta de cliente ──────────────────────────
+   O comprador do delivery tem uma sessão PRÓPRIA, separada da de staff:
+   token guardado numa chave diferente (`pratto_cliente_token`) e nunca
+   misturado com `pratto_token`. Um aparelho pode ter os dois ao mesmo
+   tempo (staff logado no painel + cliente logado na vitrine).
+   ⚠️ Endpoints não confirmados ao vivo — ver queries/customers.ts. */
+export const CLIENTE_TOKEN_KEY = "pratto_cliente_token";
+
+function getClienteToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(CLIENTE_TOKEN_KEY);
+}
+
+function clienteHeaders(): HeadersInit {
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  const token = getClienteToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+
+export async function clienteApiGet<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, { headers: clienteHeaders() });
+  return handleResponse<T>(res);
+}
+
+export async function clienteApiPost<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers: clienteHeaders(),
+    body: JSON.stringify(body),
+  });
+  return handleResponse<T>(res);
 }
 
 export { BASE_URL };

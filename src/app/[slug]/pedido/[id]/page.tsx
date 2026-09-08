@@ -5,6 +5,7 @@ import Link from "next/link";
 import { mockRestaurante } from "@/lib/mock";
 import { usePedidoLocalStore, statusSimulado } from "@/lib/store/pedidoLocal";
 import { usePedidoPublico } from "@/lib/api/queries/publicOrders";
+import { usePedidoPublicoV1 } from "@/lib/api/queries/v1/publico";
 import { useMounted } from "@/lib/hooks/useMounted";
 /* Página pública — pedido de mesa/balcão continua simulado
    (lib/store/pedidoLocal.ts); pedido de delivery é real (checkout
@@ -48,12 +49,38 @@ export default function PedidoPage({ params }: { params: Promise<{ slug: string;
      então só dá pra saber se existe de verdade depois de montar. */
   const mounted = useMounted();
 
-  /* Sem achar localmente (pedido de mesa/balcão simulado), tenta como
-     código de rastreio real (pedido de delivery). */
+  /* Sem achar localmente (pedido de mesa/balcão simulado), tenta remoto:
+     primeiro o rastreio da `/api/*` (confirmado), depois o da V1
+     (/api/v1/publico/pedidos/:id — ⚠️ não confirmado). */
   const tentarRemoto = mounted && !pedidoLocal;
-  const { data: pedidoRemoto, isLoading: carregandoRemoto, isError: erroRemoto } = usePedidoPublico(
+  const { data: remotoLegacy, isLoading: carregandoLegacy, isError: erroLegacy } = usePedidoPublico(
     tentarRemoto ? id : null
   );
+  const tentarV1 = tentarRemoto && !carregandoLegacy && (erroLegacy || !remotoLegacy);
+  const { data: remotoV1, isLoading: carregandoV1, isError: erroV1 } = usePedidoPublicoV1(tentarV1 ? id : null);
+
+  const pedidoRemoto = remotoLegacy
+    ? {
+        codigo_rastreio: remotoLegacy.codigo_rastreio,
+        status: remotoLegacy.status,
+        total: remotoLegacy.total,
+        items: remotoLegacy.items,
+      }
+    : remotoV1
+      ? {
+          codigo_rastreio: remotoV1.codigo_rastreio ?? remotoV1.id,
+          status: remotoV1.status,
+          total: remotoV1.total,
+          items: (remotoV1.itens ?? []).map((i) => ({
+            id: i.id,
+            quantidade: i.quantidade,
+            preco_unitario: i.preco_unitario,
+            produto: i.produto ? { nome: i.produto.nome } : undefined,
+          })),
+        }
+      : undefined;
+  const carregandoRemoto = carregandoLegacy || carregandoV1;
+  const erroRemoto = erroLegacy && erroV1;
 
   /* Sem backend acompanhando o pedido simulado de verdade, o status dele
      "avança" sozinho com o tempo decorrido (statusSimulado); o pedido
