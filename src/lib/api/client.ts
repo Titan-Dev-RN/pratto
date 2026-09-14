@@ -37,16 +37,20 @@ export function extractErrorMessage(err: unknown): string {
   return "Erro inesperado. Tente novamente.";
 }
 
-/* Vários GETs de lista da v1 (mesas, pedidos, categorias, produtos,
-   usuarios) NÃO têm o formato de resposta confirmado ao vivo — pode vir
-   um array solto ou um envelope (`{ mesas: [...] }` etc.). Sem isso, um
-   corpo no formato errado vira um TypeError não tratado (".filter/.map
-   is not a function") direto na tela, em vez de cair no <ErrorState/> que
-   toda lista já sabe mostrar. Loga o corpo bruto pra dar pra ver a forma
-   real no console e ajustar o unwrap, e transforma em erro de query
-   normal (pego pelo react-query, sem crash). */
+/* Confirmado ao vivo em 2026-09-14 (console de produção): todo GET de
+   lista da v1 (mesas, pedidos, categorias, produtos, usuarios) devolve
+   um envelope `{ data: [...] }`, não um array solto — quebrava a tela
+   ("TypeError: .filter/.map is not a function") em quem lia a resposta
+   como array direto. Desembrulha `data` quando presente; se vier outra
+   coisa (formato ainda muda, ou plano futuro muda de novo), loga o corpo
+   bruto pra dar pra ajustar rápido e vira erro de query normal (pego
+   pelo react-query, cai no <ErrorState/> que toda lista já tem, em vez
+   de estourar no render). */
 export function ensureArray<T>(value: unknown, label: string): T[] {
   if (Array.isArray(value)) return value as T[];
+  if (value && typeof value === "object" && Array.isArray((value as { data?: unknown }).data)) {
+    return (value as { data: T[] }).data;
+  }
   console.error(`[api] resposta de "${label}" não é um array:`, value);
   throw { erro: `Resposta inesperada do servidor (${label}).` };
 }
@@ -95,6 +99,24 @@ async function handleResponse<T>(res: Response, authed: boolean): Promise<T> {
   return body as T;
 }
 
+/* A v1 embrulha toda resposta de sucesso em `{ data: T, meta?: {...} }`
+   (é literalmente o shape de `ApiResponse<T>` em types/api.ts — definido
+   desde a migração, mas nunca ligado aqui). Confirmado ao vivo em
+   2026-09-14 pelos GETs de lista (mesas, pedidos vieram como
+   `{ data: [...] }`, não array solto). Desembrulha num só lugar, usado
+   por toda a superfície v1 (apiGet/apiPost/apiPatch/apiPut/apiDelete +
+   apiPostAbsolute, que também é `/api/v1/...`) — sem isso, todo recurso
+   único (mesa, pedido, dashboard, restaurante, o próprio login) vinha
+   com os campos undefined em vez de quebrar visivelmente, silencioso até
+   alguém reparar. Não mexe em clienteApiGet/Post: surface antiga
+   (`/api/public/*`), sem confirmação de que usa o mesmo envelope. */
+function unwrapEnvelope<T>(body: unknown): T {
+  if (body && typeof body === "object" && "data" in body) {
+    return (body as { data: T }).data;
+  }
+  return body as T;
+}
+
 function authHeaders(authed: boolean): HeadersInit {
   const headers: HeadersInit = { "Content-Type": "application/json" };
   if (authed) {
@@ -106,7 +128,7 @@ function authHeaders(authed: boolean): HeadersInit {
 
 export async function apiGet<T>(path: string, authed = true): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, { headers: authHeaders(authed) });
-  return handleResponse<T>(res, authed);
+  return unwrapEnvelope<T>(await handleResponse<unknown>(res, authed));
 }
 
 export async function apiPost<T>(path: string, body: unknown, authed = true): Promise<T> {
@@ -115,7 +137,7 @@ export async function apiPost<T>(path: string, body: unknown, authed = true): Pr
     headers: authHeaders(authed),
     body: JSON.stringify(body),
   });
-  return handleResponse<T>(res, authed);
+  return unwrapEnvelope<T>(await handleResponse<unknown>(res, authed));
 }
 
 export async function apiPatch<T>(path: string, body: unknown, authed = true): Promise<T> {
@@ -124,7 +146,7 @@ export async function apiPatch<T>(path: string, body: unknown, authed = true): P
     headers: authHeaders(authed),
     body: JSON.stringify(body),
   });
-  return handleResponse<T>(res, authed);
+  return unwrapEnvelope<T>(await handleResponse<unknown>(res, authed));
 }
 
 /* A superfície V1 documenta os updates como PUT (a `/api/*` usa PATCH). O
@@ -136,25 +158,26 @@ export async function apiPut<T>(path: string, body: unknown, authed = true): Pro
     headers: authHeaders(authed),
     body: JSON.stringify(body),
   });
-  return handleResponse<T>(res, authed);
+  return unwrapEnvelope<T>(await handleResponse<unknown>(res, authed));
 }
 
 export async function apiDelete<T>(path: string, authed = true): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, { method: "DELETE", headers: authHeaders(authed) });
-  return handleResponse<T>(res, authed);
+  return unwrapEnvelope<T>(await handleResponse<unknown>(res, authed));
 }
 
 /* O único login do app fica fora do prefixo de recurso (é
    /api/v1/cliente/autenticacao/login, não .../api/<recurso>) — por isso
    recebe o path já completo em vez de usar BASE_URL. Ainda assim é
-   relativo pelo mesmo motivo: cai no proxy de src/app/api/[...path]/. */
+   relativo pelo mesmo motivo: cai no proxy de src/app/api/[...path]/.
+   Mesma superfície v1 dos outros — passa pelo mesmo unwrapEnvelope. */
 export async function apiPostAbsolute<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  return handleResponse<T>(res, false);
+  return unwrapEnvelope<T>(await handleResponse<unknown>(res, false));
 }
 
 /* Decimais do Rails vêm como string na maioria das respostas (preco,
