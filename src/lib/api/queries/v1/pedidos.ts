@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPatch, apiPost, toNumber } from "@/lib/api/client";
+import { apiGet, apiPatch, apiPost, ensureArray, toNumber } from "@/lib/api/client";
 import { V1AtualizarStatusPedidoPayload, V1CriarPedidoPayload } from "@/types/api";
 import { PedidoV1 } from "@/types/domain";
 
@@ -32,7 +32,8 @@ export function usePedidosV1(params?: { status?: string; tipo?: string }) {
   const suffix = qs.toString() ? `?${qs}` : "";
   return useQuery({
     queryKey: [...KEY, params?.status ?? "todos", params?.tipo ?? "todos"],
-    queryFn: async () => (await apiGet<PedidoV1[]>(`/v1/cliente/pedidos${suffix}`)).map(normalizar),
+    queryFn: async () =>
+      ensureArray<PedidoV1>(await apiGet<unknown>(`/v1/cliente/pedidos${suffix}`), "pedidos").map(normalizar),
     refetchInterval: 15_000,
   });
 }

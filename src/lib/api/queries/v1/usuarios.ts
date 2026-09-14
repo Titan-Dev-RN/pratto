@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPost, apiPut } from "@/lib/api/client";
+import { apiGet, apiPost, apiPut, ensureArray } from "@/lib/api/client";
 import { V1AtualizarUsuarioPayload, V1CriarUsuarioPayload } from "@/types/api";
 import { UserRole, Usuario } from "@/types/domain";
 
@@ -27,7 +27,8 @@ function normalizar(raw: UsuarioV1Bruto): Usuario {
 export function useUsuariosV1() {
   return useQuery({
     queryKey: KEY,
-    queryFn: async () => (await apiGet<UsuarioV1Bruto[]>("/v1/cliente/usuarios")).map(normalizar),
+    queryFn: async () =>
+      ensureArray<UsuarioV1Bruto>(await apiGet<unknown>("/v1/cliente/usuarios"), "usuarios").map(normalizar),
     staleTime: 30_000,
   });
 }

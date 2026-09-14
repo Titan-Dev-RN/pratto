@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api/client";
+import { apiDelete, apiGet, apiPost, apiPut, ensureArray } from "@/lib/api/client";
 import { V1AtualizarCategoriaPayload, V1CriarCategoriaPayload } from "@/types/api";
 import { Categoria } from "@/types/domain";
 
@@ -16,7 +16,7 @@ const KEY = ["v1", "categorias"];
 export function useCategorias() {
   return useQuery({
     queryKey: KEY,
-    queryFn: () => apiGet<Categoria[]>("/v1/cliente/categorias"),
+    queryFn: async () => ensureArray<Categoria>(await apiGet<unknown>("/v1/cliente/categorias"), "categorias"),
     staleTime: 60_000,
   });
 }
@@ -24,7 +24,11 @@ export function useCategorias() {
 export function useCategoriasPublicas(slug: string) {
   return useQuery({
     queryKey: ["v1", "publico", "categorias", slug],
-    queryFn: () => apiGet<Categoria[]>(`/v1/publico/restaurantes/${slug}/categorias`, false),
+    queryFn: async () =>
+      ensureArray<Categoria>(
+        await apiGet<unknown>(`/v1/publico/restaurantes/${slug}/categorias`, false),
+        "categorias públicas",
+      ),
     enabled: !!slug,
     staleTime: 60_000,
   });

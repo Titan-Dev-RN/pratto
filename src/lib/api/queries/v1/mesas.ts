@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api/client";
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut, ensureArray } from "@/lib/api/client";
 import { V1AtualizarMesaPayload, V1CriarMesaPayload, V1FecharMesaPayload } from "@/types/api";
 import { MesaV1 } from "@/types/domain";
 
@@ -16,7 +16,7 @@ const KEY = ["v1", "mesas"];
 export function useMesasV1() {
   return useQuery({
     queryKey: KEY,
-    queryFn: () => apiGet<MesaV1[]>("/v1/cliente/mesas"),
+    queryFn: async () => ensureArray<MesaV1>(await apiGet<unknown>("/v1/cliente/mesas"), "mesas"),
     staleTime: 10_000,
     refetchInterval: 15_000,
   });

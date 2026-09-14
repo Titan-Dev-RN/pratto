@@ -37,6 +37,20 @@ export function extractErrorMessage(err: unknown): string {
   return "Erro inesperado. Tente novamente.";
 }
 
+/* Vários GETs de lista da v1 (mesas, pedidos, categorias, produtos,
+   usuarios) NÃO têm o formato de resposta confirmado ao vivo — pode vir
+   um array solto ou um envelope (`{ mesas: [...] }` etc.). Sem isso, um
+   corpo no formato errado vira um TypeError não tratado (".filter/.map
+   is not a function") direto na tela, em vez de cair no <ErrorState/> que
+   toda lista já sabe mostrar. Loga o corpo bruto pra dar pra ver a forma
+   real no console e ajustar o unwrap, e transforma em erro de query
+   normal (pego pelo react-query, sem crash). */
+export function ensureArray<T>(value: unknown, label: string): T[] {
+  if (Array.isArray(value)) return value as T[];
+  console.error(`[api] resposta de "${label}" não é um array:`, value);
+  throw { erro: `Resposta inesperada do servidor (${label}).` };
+}
+
 /* Extrai uma mensagem exibível de qualquer erro capturado num catch. */
 export function apiErrorMessage(err: unknown, fallback = "Tente novamente."): string {
   if (err && typeof err === "object" && "message" in err && typeof (err as ApiError & { message?: string }).message === "string") {

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiDelete, apiGet, apiPost, apiPut, toNumber } from "@/lib/api/client";
+import { apiDelete, apiGet, apiPost, apiPut, ensureArray, toNumber } from "@/lib/api/client";
 import { V1AtualizarProdutoPayload, V1CriarProdutoPayload } from "@/types/api";
 import { Produto } from "@/types/domain";
 
@@ -20,7 +20,7 @@ function normalizar(raw: Produto): Produto {
 export function useProdutosV1() {
   return useQuery({
     queryKey: KEY,
-    queryFn: async () => (await apiGet<Produto[]>("/v1/cliente/produtos")).map(normalizar),
+    queryFn: async () => ensureArray<Produto>(await apiGet<unknown>("/v1/cliente/produtos"), "produtos").map(normalizar),
     staleTime: 60_000,
   });
 }
@@ -36,7 +36,11 @@ export function useProdutoV1(id: string, options?: { enabled?: boolean }) {
 export function useProdutosPublicosV1(slug: string) {
   return useQuery({
     queryKey: ["v1", "publico", "produtos", slug],
-    queryFn: async () => (await apiGet<Produto[]>(`/v1/publico/restaurantes/${slug}/produtos`, false)).map(normalizar),
+    queryFn: async () =>
+      ensureArray<Produto>(
+        await apiGet<unknown>(`/v1/publico/restaurantes/${slug}/produtos`, false),
+        "produtos públicos",
+      ).map(normalizar),
     enabled: !!slug,
     staleTime: 60_000,
   });
