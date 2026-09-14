@@ -8,14 +8,21 @@ import { useQueryClient } from "@tanstack/react-query";
    houver servidor de WebSocket, ele falha silenciosamente e tenta de novo
    a cada 5s. A lista de pedidos/mesas já se mantém atualizada via
    refetchInterval e invalidação após mutações, então esse hook é só um
-   "bônus" de atualização mais rápida quando/se o backend oferecer o canal. */
+   "bônus" de atualização mais rápida quando/se o backend oferecer o canal.
+
+   Sem NEXT_PUBLIC_WS_URL configurada (produção ainda não tem), não dá pra
+   adivinhar um endereço — o antigo fallback "ws://localhost:3001/cable"
+   só existe na máquina de quem está rodando `next dev`; em produção ele
+   nunca conecta e o hook ficava reconectando pra sempre a cada 5s, gerando
+   erro de WebSocket no console sem parar. Sem env var, simplesmente não
+   tenta conectar (mesmo degrade gracioso, sem o ruído). */
 
 interface UseOrdersOptions {
   onNovoPedido?: (pedido: unknown) => void;
   onStatusAtualizado?: (pedido: unknown) => void;
 }
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:3001/cable";
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL;
 
 export function useOrders({ onNovoPedido, onStatusAtualizado }: UseOrdersOptions = {}) {
   const qc = useQueryClient();
@@ -37,6 +44,7 @@ export function useOrders({ onNovoPedido, onStatusAtualizado }: UseOrdersOptions
   }, [qc]);
 
   const connect = useCallback(() => {
+    if (!WS_URL) return; // sem endereço configurado, não tenta conectar
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     const token = typeof window !== "undefined" ? localStorage.getItem("pratto_token") : null;
