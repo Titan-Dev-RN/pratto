@@ -1,0 +1,10 @@
+{
+  "name": "Pratto",
+  "short_name": "Pratto",
+  "description": "Cardápio digital e PDV para restaurantes",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#D85A30",
+  "icons": []
+}
