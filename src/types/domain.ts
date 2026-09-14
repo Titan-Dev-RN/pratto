@@ -19,15 +19,6 @@ export type TableStatus = "livre" | "ocupada" | "conta_pedida";
    delete (confirmado ao vivo: o item não some, só muda de status). */
 export type ItemComandaStatus = "pendente" | "em_andamento" | "pronto" | "cancelado";
 
-<<<<<<< HEAD
-export interface HorarioDia {
-  abertura: string;
-  fechamento: string;
-  aberto: boolean;
-}
-
-export interface Restaurante {
-=======
 /* "mesa" confirmado ao vivo (campo `tipo` da comanda). "delivery"/"balcao"
    inferidos pelos campos que só fazem sentido fora de mesa
    (nome_cliente/telefone_cliente/endereco_entrega/codigo_rastreio) —
@@ -35,10 +26,24 @@ export interface Restaurante {
 export type ComandaTipo = "mesa" | "delivery" | "balcao";
 
 export interface Usuario {
->>>>>>> c4bfebad0726f88fb025f476af8a10e3dfd65f59
   id: string;
   nome: string;
-<<<<<<< HEAD
+  email: string;
+  role: UserRole;
+  ativo: boolean;
+  restaurante_id?: string;
+}
+
+export interface HorarioDia {
+  abertura: string;
+  fechamento: string;
+  aberto: boolean;
+}
+
+export interface Restaurante {
+  id: string;
+  slug: string;
+  nome: string;
   logo_url?: string;
   cor_primaria?: string;
   chave_pix?: string;
@@ -46,29 +51,26 @@ export interface Usuario {
   telefone?: string;
   taxa_servico?: number;
   horarios?: Record<string, HorarioDia>;
-=======
-  email: string;
-  role: UserRole;
->>>>>>> c4bfebad0726f88fb025f476af8a10e3dfd65f59
   ativo: boolean;
-  restaurante_id?: string;
 }
 
-export interface MesaComandaResumo {
+export interface Categoria {
   id: string;
-  total: number;
-  opened_at: string;
+  nome: string;
+  descricao?: string;
+  ordem: number;
+  ativa: boolean;
+  restaurante_id: string;
 }
 
 export interface Mesa {
   id: string;
   numero: number;
-  capacidade?: number;
+  capacidade: number;
   status: TableStatus;
-  /* Resumo da comanda aberta, embutido pelo backend — evita uma chamada
-     extra só pra saber se a mesa tem conta em aberto e o valor (caixa
-     problema #2: ver valor da conta assim que clica na mesa). */
-  active_command?: MesaComandaResumo | null;
+  restaurante_id: string;
+  pedido_aberto_id?: string;
+  qr_code_url?: string;
 }
 
 export interface Produto {
@@ -81,6 +83,23 @@ export interface Produto {
   categoria_id?: string | null;
   foto_url?: string | null;
   ordem?: number;
+}
+
+export interface Variacao {
+  id: string;
+  nome: string;
+  preco_adicional: number;
+}
+
+/* Item da sacola do cliente final (checkout público) — sem endpoint de
+   variações confirmado na API real; `variacoes_selecionadas` fica vazio
+   na prática, mas o tipo permanece pra não travar a UI que já existe. */
+export interface ItemSacola {
+  produto: Produto;
+  quantidade: number;
+  observacao?: string;
+  variacoes_selecionadas: Variacao[];
+  preco_total: number;
 }
 
 export interface ItemComanda {
@@ -126,6 +145,53 @@ export interface Comanda {
   created_at: string;
   updated_at?: string;
   item_comandas?: ItemComanda[];
+}
+
+export type OrderType = "mesa" | "delivery" | "balcao";
+
+export type OrderStatus =
+  | "pendente"
+  | "confirmado"
+  | "em_preparo"
+  | "pronto"
+  | "entregue"
+  | "cancelado";
+
+export interface ItemPedido {
+  id: string;
+  produto_id: string;
+  produto_nome: string;
+  produto_foto?: string;
+  quantidade: number;
+  preco_unitario: number;
+  preco_total: number;
+  observacao?: string;
+  variacoes: { nome: string; preco_adicional: number }[];
+}
+
+export interface Pedido {
+  id: string;
+  numero: string;
+  tipo: OrderType;
+  status: OrderStatus;
+  mesa_id?: string;
+  mesa_numero?: number;
+  restaurante_id: string;
+  itens: ItemPedido[];
+  total: number;
+  observacao?: string;
+  endereco_entrega?: EnderecoEntrega;
+  criado_em: string;
+  atualizado_em: string;
+}
+
+export interface DashboardKPI {
+  vendas_hoje: number;
+  ticket_medio: number;
+  pedidos_hoje: number;
+  pedidos_em_aberto: number;
+  grafico_7dias: { data: string; total: number }[];
+  pedidos_recentes: Pedido[];
 }
 
 export interface SalesReportProduct {

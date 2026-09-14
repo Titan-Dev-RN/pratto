@@ -1,3 +1,5 @@
+import type { ApiError } from "@/types/api";
+
 /* Backend real: Rails "API_atendimento", superfície `/api/*` (sem
    versionamento, nomes em inglês) — confirmada ao vivo em 2026-08-24
    contra http://85.209.92.60:5000. Existe uma segunda superfície no mesmo
@@ -16,57 +18,6 @@ function getToken(): string | null {
   return localStorage.getItem("pratto_token");
 }
 
-<<<<<<< HEAD
-/* Sessão expirada/token inválido: limpa a sessão local e manda pro login.
-   Import dinâmico evita ciclo de módulos com o session store. */
-async function tratarSessaoExpirada() {
-  if (typeof window === "undefined") return;
-  const { useSessionStore } = await import("@/lib/store/session");
-  useSessionStore.getState().clearSession();
-  document.cookie = "pratto_token=; path=/; max-age=0";
-  document.cookie = "pratto_role=; path=/; max-age=0";
-  if (!window.location.pathname.startsWith("/login")) {
-    window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
-  }
-}
-
-/* A API às vezes responde { error }, às vezes { errors: [...] } (validação).
-   Normaliza tudo para o shape único que o front consome. */
-async function handleResponse<T>(res: Response, authed: boolean): Promise<T> {
-  if (!res.ok) {
-    let body: Record<string, unknown> = {};
-    try {
-      body = await res.json();
-    } catch {
-      /* resposta não é JSON (ex: 500 sem handler, proxy fora do ar) */
-    }
-
-    const mensagem =
-      (typeof body.error === "string" && body.error) ||
-      (Array.isArray(body.errors) && body.errors.join(", ")) ||
-      res.statusText ||
-      "Erro inesperado. Tente novamente.";
-
-    if (res.status === 401 && authed) {
-      void tratarSessaoExpirada();
-    }
-
-    const err: ApiError = { error: mensagem, message: mensagem, status: res.status };
-    throw err;
-  }
-  return res.json() as Promise<T>;
-}
-
-/* Extrai uma mensagem exibível de qualquer erro capturado num catch. */
-export function apiErrorMessage(err: unknown, fallback = "Tente novamente."): string {
-  if (err && typeof err === "object" && "message" in err && typeof (err as ApiError).message === "string") {
-    return (err as ApiError).message;
-  }
-  return fallback;
-}
-
-export async function apiGet<T>(path: string, authed = false): Promise<T> {
-=======
 /* Sessão do cliente final (delivery) é independente da sessão de staff —
    token próprio, guardado por lib/store/clienteCadastro.ts. */
 function getClienteToken(): string | null {
@@ -93,7 +44,28 @@ export function extractErrorMessage(err: unknown): string {
   return "Erro inesperado. Tente novamente.";
 }
 
-async function handleResponse<T>(res: Response): Promise<T> {
+/* Extrai uma mensagem exibível de qualquer erro capturado num catch. */
+export function apiErrorMessage(err: unknown, fallback = "Tente novamente."): string {
+  if (err && typeof err === "object" && "message" in err && typeof (err as ApiError & { message?: string }).message === "string") {
+    return (err as ApiError & { message: string }).message;
+  }
+  return fallback;
+}
+
+/* Sessão expirada/token inválido: limpa a sessão local e manda pro login.
+   Import dinâmico evita ciclo de módulos com o session store. */
+async function tratarSessaoExpirada() {
+  if (typeof window === "undefined") return;
+  const { useSessionStore } = await import("@/lib/store/session");
+  useSessionStore.getState().clearSession();
+  document.cookie = "pratto_token=; path=/; max-age=0";
+  document.cookie = "pratto_role=; path=/; max-age=0";
+  if (!window.location.pathname.startsWith("/login")) {
+    window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+  }
+}
+
+async function handleResponse<T>(res: Response, authed: boolean): Promise<T> {
   if (res.status === 204) return undefined as T;
 
   const isJson = res.headers.get("content-type")?.includes("application/json");
@@ -107,6 +79,9 @@ async function handleResponse<T>(res: Response): Promise<T> {
   }
 
   if (!res.ok) {
+    if (res.status === 401 && authed) {
+      void tratarSessaoExpirada();
+    }
     throw body ?? { erro: res.statusText || "Erro inesperado" };
   }
 
@@ -114,16 +89,11 @@ async function handleResponse<T>(res: Response): Promise<T> {
 }
 
 function authHeaders(authed: boolean): HeadersInit {
->>>>>>> c4bfebad0726f88fb025f476af8a10e3dfd65f59
   const headers: HeadersInit = { "Content-Type": "application/json" };
   if (authed) {
     const token = getToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
-<<<<<<< HEAD
-  const res = await fetch(`${BASE_URL}${path}`, { headers });
-  return handleResponse<T>(res, authed);
-=======
   return headers;
 }
 
@@ -136,15 +106,17 @@ function clienteAuthHeaders(): HeadersInit {
 
 export async function apiGet<T>(path: string, authed = true): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, { headers: authHeaders(authed) });
-  return handleResponse<T>(res);
->>>>>>> c4bfebad0726f88fb025f476af8a10e3dfd65f59
+  return handleResponse<T>(res, authed);
 }
 
 /* Variante autenticada com o token do cliente final (delivery), não o de
    staff — usada só nas rotas de /public/storefront/:slug/{orders,me}. */
+/* `authed=false` aqui: o parâmetro só controla o efeito colateral de
+   tratarSessaoExpirada() (logout de STAFF) em handleResponse — um 401
+   nessas rotas é o token do CLIENTE expirando, não o de staff. */
 export async function apiGetCliente<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, { headers: clienteAuthHeaders() });
-  return handleResponse<T>(res);
+  return handleResponse<T>(res, false);
 }
 
 export async function apiPostCliente<T>(path: string, body: unknown): Promise<T> {
@@ -153,7 +125,7 @@ export async function apiPostCliente<T>(path: string, body: unknown): Promise<T>
     headers: clienteAuthHeaders(),
     body: JSON.stringify(body),
   });
-  return handleResponse<T>(res);
+  return handleResponse<T>(res, false);
 }
 
 export async function apiPost<T>(path: string, body: unknown, authed = true): Promise<T> {
@@ -175,16 +147,8 @@ export async function apiPatch<T>(path: string, body: unknown, authed = true): P
 }
 
 export async function apiDelete<T>(path: string, authed = true): Promise<T> {
-<<<<<<< HEAD
-  const headers: HeadersInit = { "Content-Type": "application/json" };
-  const token = getToken();
-  if (authed && token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(`${BASE_URL}${path}`, { method: "DELETE", headers });
-  return handleResponse<T>(res, authed);
-=======
   const res = await fetch(`${BASE_URL}${path}`, { method: "DELETE", headers: authHeaders(authed) });
-  return handleResponse<T>(res);
->>>>>>> c4bfebad0726f88fb025f476af8a10e3dfd65f59
+  return handleResponse<T>(res, authed);
 }
 
 /* O único login do app fica fora do prefixo de recurso (é
@@ -197,7 +161,7 @@ export async function apiPostAbsolute<T>(path: string, body: unknown): Promise<T
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  return handleResponse<T>(res);
+  return handleResponse<T>(res, false);
 }
 
 /* Decimais do Rails vêm como string na maioria das respostas (preco,

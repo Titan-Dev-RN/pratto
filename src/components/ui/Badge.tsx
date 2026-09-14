@@ -1,4 +1,4 @@
-import { ItemComandaStatus, TableStatus } from "@/types/domain";
+import { ItemComandaStatus, OrderStatus, TableStatus } from "@/types/domain";
 
 type BadgeVariant = "success" | "warning" | "error" | "info" | "neutral";
 
@@ -64,6 +64,19 @@ export function EntregaStatusBadge({ status }: { status: string }) {
     em_preparo: { label: "Em preparo", variant: "info" },
     pronto: { label: "Pronto p/ entrega", variant: "info" },
     entregue: { label: "Entregue", variant: "success" },
+    cancelado: { label: "Cancelado", variant: "error" },
+  };
+  const { label, variant } = map[status] ?? { label: status, variant: "neutral" as BadgeVariant };
+  return <Badge variant={variant} dot>{label}</Badge>;
+}
+
+export function OrderStatusBadge({ status }: { status: OrderStatus }) {
+  const map: Record<OrderStatus, { label: string; variant: BadgeVariant }> = {
+    pendente: { label: "Pendente", variant: "warning" },
+    confirmado: { label: "Confirmado", variant: "info" },
+    em_preparo: { label: "Em preparo", variant: "info" },
+    pronto: { label: "Pronto", variant: "success" },
+    entregue: { label: "Entregue", variant: "neutral" },
     cancelado: { label: "Cancelado", variant: "error" },
   };
   const { label, variant } = map[status] ?? { label: status, variant: "neutral" as BadgeVariant };

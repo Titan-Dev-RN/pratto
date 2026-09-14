@@ -1,5 +1,14 @@
 import { TableStatus, UserRole } from "@/types/domain";
 
+export interface ApiResponse<T> {
+  data: T;
+  meta?: {
+    total?: number;
+    page?: number;
+    per_page?: number;
+  };
+}
+
 /* A API roda com `consider_all_requests_local` (modo dev) — dois formatos
    de erro coexistem:
    - validação de verdade, tratada pelo controller: `{ errors: string[] }`
@@ -15,7 +24,11 @@ export interface ApiErroDebug {
   error: string;
   exception?: string;
 }
-export type ApiError = ApiErroValidacao | ApiErroDebug | { erro: string };
+export type ApiError =
+  | ApiErroValidacao
+  | ApiErroDebug
+  | { erro: string }
+  | { error: string; message: string; status: number };
 
 /* Login — único endpoint de auth do app inteiro, fora do prefixo /api
    (fica em /api/v1/cliente/autenticacao/login). Payload em português. */
@@ -155,7 +168,12 @@ export interface LoginClientePayload {
   email: string;
   senha: string;
 }
-<<<<<<< HEAD
+export interface ClienteFinal {
+  id: string;
+  nome: string;
+  email: string;
+  telefone: string;
+}
 
 export interface CriarPedidoPayload {
   mesa_id?: string;
@@ -177,13 +195,21 @@ export interface CriarPedidoPayload {
     cidade: string;
     cep: string;
   };
-=======
-export interface ClienteFinal {
-  id: string;
-  nome: string;
-  email: string;
-  telefone: string;
->>>>>>> c4bfebad0726f88fb025f476af8a10e3dfd65f59
+}
+
+export interface AtualizarStatusPayload {
+  status: string;
+}
+
+export interface ImprimirPayload {
+  pedido_id: string;
+  impressora_id?: string;
+}
+
+export interface ImprimirResponse {
+  sucesso: boolean;
+  mensagem: string;
+  job_id?: string;
 }
 export interface ClienteAuthResponse {
   token: string;

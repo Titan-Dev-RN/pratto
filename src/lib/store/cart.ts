@@ -2,9 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-/* Carrinho do cliente — só usado pelo fluxo público, que continua mock
-   (checkout do cliente pausado, ver Fase 7 do plano de integração). */
-import { ItemSacolaLegacy as ItemSacola, ProdutoLegacy as Produto, VariacaoLegacy as Variacao } from "@/types/domain.legacy";
+import { ItemSacola, Produto, Variacao } from "@/types/domain";
 
 interface CartState {
   slug: string | null;

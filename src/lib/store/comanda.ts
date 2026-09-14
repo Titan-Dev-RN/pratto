@@ -10,10 +10,11 @@ export interface ItemComanda {
   preco_total: number;
 }
 
-/* Carrinho local do PDV — a mesa/comanda de destino vem por query param
-   na URL (?comanda_id=...&mesa_num=...), não precisa ficar aqui. */
 interface ComandaState {
+  mesa_id: string | null;
+  mesa_numero: number | null;
   itens: ItemComanda[];
+  setMesa: (id: string, numero: number) => void;
   adicionarItem: (produto: Produto, quantidade?: number, observacao?: string) => void;
   removerItem: (index: number) => void;
   atualizarQuantidade: (index: number, quantidade: number) => void;
@@ -23,7 +24,11 @@ interface ComandaState {
 }
 
 export const useComandaStore = create<ComandaState>((set, get) => ({
+  mesa_id: null,
+  mesa_numero: null,
   itens: [],
+
+  setMesa: (id, numero) => set({ mesa_id: id, mesa_numero: numero }),
 
   adicionarItem: (produto, quantidade = 1, observacao) => {
     set((s) => {
@@ -66,7 +71,7 @@ export const useComandaStore = create<ComandaState>((set, get) => ({
       ),
     })),
 
-  limpar: () => set({ itens: [] }),
+  limpar: () => set({ itens: [], mesa_id: null, mesa_numero: null }),
 
   total: () => get().itens.reduce((acc, i) => acc + i.preco_total, 0),
 
