@@ -17,11 +17,17 @@ import { PedidoV1 } from "@/types/domain";
 
 const KEY = ["v1", "pedidos"];
 
+/* `?.map` só protege contra null/undefined — se `itens` vier num shape
+   diferente de array, ainda quebraria a tela (várias fazem
+   `pedido.itens ?? []`, que não pega esse caso). `Array.isArray` cobre
+   isso: vira `undefined`, tratado como "sem item" pelo `?? []`. */
 function normalizar(raw: PedidoV1): PedidoV1 {
   return {
     ...raw,
     total: toNumber(raw.total),
-    itens: raw.itens?.map((i) => ({ ...i, preco_unitario: toNumber(i.preco_unitario) })),
+    itens: Array.isArray(raw.itens)
+      ? raw.itens.map((i) => ({ ...i, preco_unitario: toNumber(i.preco_unitario) }))
+      : undefined,
   };
 }
 

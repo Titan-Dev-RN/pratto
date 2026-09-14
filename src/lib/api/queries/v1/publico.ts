@@ -23,11 +23,15 @@ export function useCriarPedidoPublicoV1(slug: string) {
   });
 }
 
+/* Mesmo raciocínio de queries/v1/pedidos.ts: `Array.isArray` em vez de só
+   `?.map`, pra um `itens` em shape errado não quebrar a tela. */
 function normalizar(raw: PedidoV1): PedidoV1 {
   return {
     ...raw,
     total: toNumber(raw.total),
-    itens: raw.itens?.map((i) => ({ ...i, preco_unitario: toNumber(i.preco_unitario) })),
+    itens: Array.isArray(raw.itens)
+      ? raw.itens.map((i) => ({ ...i, preco_unitario: toNumber(i.preco_unitario) }))
+      : undefined,
   };
 }
 

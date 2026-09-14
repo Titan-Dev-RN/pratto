@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { clienteApiGet, clienteApiPost, toNumber } from "@/lib/api/client";
+import { clienteApiGet, clienteApiPost, ensureArray, toNumber } from "@/lib/api/client";
 import {
   ClienteAuthResponse,
   ClienteContaBruta,
@@ -78,11 +78,16 @@ export function useMeusPedidosCliente(slug: string, options?: { enabled?: boolea
   return useQuery({
     queryKey: ["cliente", "pedidos", slug],
     queryFn: async () => {
-      const pedidos = await clienteApiGet<PedidoPublico[]>(`/public/storefront/${slug}/orders`);
+      const pedidos = ensureArray<PedidoPublico>(
+        await clienteApiGet<unknown>(`/public/storefront/${slug}/orders`),
+        "pedidos do cliente",
+      );
       return pedidos.map((p) => ({
         ...p,
         total: toNumber(p.total),
-        items: (p.items ?? []).map((i) => ({ ...i, preco_unitario: toNumber(i.preco_unitario) })),
+        items: Array.isArray(p.items)
+          ? p.items.map((i) => ({ ...i, preco_unitario: toNumber(i.preco_unitario) }))
+          : [],
       }));
     },
     enabled: (options?.enabled ?? true) && !!slug,

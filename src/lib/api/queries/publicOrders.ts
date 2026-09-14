@@ -6,7 +6,9 @@ function normalizar(raw: PedidoPublico): PedidoPublico {
   return {
     ...raw,
     total: toNumber(raw.total),
-    items: raw.items.map((i) => ({ ...i, preco_unitario: toNumber(i.preco_unitario) })),
+    items: Array.isArray(raw.items)
+      ? raw.items.map((i) => ({ ...i, preco_unitario: toNumber(i.preco_unitario) }))
+      : [],
   };
 }
 
