@@ -1,20 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { useEntregas, useAtualizarStatusEntrega } from "@/lib/api/queries/entregas";
-import { Comanda } from "@/types/domain";
+import { usePedidosV1, useAtualizarStatusPedidoV1 } from "@/lib/api/queries/v1/pedidos";
+import { PedidoV1 } from "@/types/domain";
 import { EntregaStatusBadge } from "@/components/ui/Badge";
 import { PageLoader } from "@/components/ui/Spinner";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { formatBRL } from "@/lib/utils";
 import { toast } from "@/components/ui/Toast";
 
-/* Status real da comanda (o mesmo enum de sempre, PATCH em
-   /api/delivery_orders/:id/status usando `status_delivery`) — confirmado
-   ao vivo: pendente/confirmado/em_preparo/pronto/entregue/cancelado.
-   "saiu_para_entrega" do exemplo do Insomnia não existe (500 "not a
-   valid status") — não tem estado dedicado de "em trânsito", então o
-   fluxo do entregador vira só "pronto" → "entregue". */
+/* Migrado pra V1 — GET /api/v1/cliente/pedidos?tipo=delivery e PATCH
+   /api/v1/cliente/pedidos/:id/status usando `status` (a `/api/*` usava
+   /delivery_orders e `status_delivery`). Enum de status assumido igual ao
+   confirmado antes: pendente/confirmado/em_preparo/pronto/entregue/
+   cancelado. ⚠️ V1 não confirmada ao vivo. */
 
 type Filtro = "todas" | "pendente" | "pronto";
 
@@ -38,7 +37,7 @@ const acaoLabel: Record<string, string> = {
   pronto: "Marcar entregue",
 };
 
-function formatarEndereco(entrega: Comanda): string | null {
+function formatarEndereco(entrega: PedidoV1): string | null {
   const e = entrega.endereco_entrega;
   if (!e) return null;
   const linha1 = [e.logradouro, e.numero].filter(Boolean).join(", ");
@@ -48,8 +47,8 @@ function formatarEndereco(entrega: Comanda): string | null {
 
 export default function EntregasPage() {
   const [filtroAtivo, setFiltroAtivo] = useState<Filtro>("todas");
-  const { data: entregas, isLoading, isError, refetch } = useEntregas();
-  const atualizarStatus = useAtualizarStatusEntrega();
+  const { data: entregas, isLoading, isError, refetch } = usePedidosV1({ tipo: "delivery" });
+  const atualizarStatus = useAtualizarStatusPedidoV1();
 
   if (isLoading) return <PageLoader />;
   if (isError || !entregas) return <ErrorState onRetry={() => refetch()} />;
@@ -59,11 +58,11 @@ export default function EntregasPage() {
     return e.status === filtroAtivo;
   });
 
-  function avancarStatus(entrega: Comanda) {
+  function avancarStatus(entrega: PedidoV1) {
     const proximo = proximoStatus[entrega.status];
     if (!proximo) return;
     atualizarStatus.mutate(
-      { id: entrega.id, payload: { status_delivery: proximo } },
+      { id: entrega.id, payload: { status: proximo } },
       {
         onSuccess: () => toast.success("Status atualizado!"),
         onError: () => toast.error("Erro ao atualizar entrega", "Tente novamente."),
@@ -110,7 +109,7 @@ export default function EntregasPage() {
   );
 }
 
-function EntregaCard({ entrega, loading, onAvancar }: { entrega: Comanda; loading: boolean; onAvancar: () => void }) {
+function EntregaCard({ entrega, loading, onAvancar }: { entrega: PedidoV1; loading: boolean; onAvancar: () => void }) {
   const acao = acaoLabel[entrega.status];
   const endereco = formatarEndereco(entrega);
 
@@ -122,7 +121,7 @@ function EntregaCard({ entrega, loading, onAvancar }: { entrega: Comanda; loadin
       </div>
       {endereco && <p className="text-sm text-neutral-500">{endereco}</p>}
       <p className="text-xs text-neutral-400 mt-0.5">
-        {entrega.telefone_cliente} · Pedido #{entrega.numero ?? entrega.id.slice(0, 8)}
+        {entrega.telefone_cliente} · Pedido #{entrega.codigo_rastreio ?? entrega.id.slice(0, 8)}
       </p>
       <p className="text-sm font-semibold text-team-600 mt-2">{formatBRL(entrega.total)}</p>
 

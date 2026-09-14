@@ -18,13 +18,6 @@ function getToken(): string | null {
   return localStorage.getItem("pratto_token");
 }
 
-/* Sessão do cliente final (delivery) é independente da sessão de staff —
-   token próprio, guardado por lib/store/clienteCadastro.ts. */
-function getClienteToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("pratto_cliente_token");
-}
-
 /* Dois formatos de erro coexistem (ver types/api.ts): `{errors: [...]}`
    limpo, ou a página de debug do Rails em JSON quando é um erro de
    framework não tratado pelo controller (parâmetro faltando, enum
@@ -97,35 +90,9 @@ function authHeaders(authed: boolean): HeadersInit {
   return headers;
 }
 
-function clienteAuthHeaders(): HeadersInit {
-  const headers: HeadersInit = { "Content-Type": "application/json" };
-  const token = getClienteToken();
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  return headers;
-}
-
 export async function apiGet<T>(path: string, authed = true): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, { headers: authHeaders(authed) });
   return handleResponse<T>(res, authed);
-}
-
-/* Variante autenticada com o token do cliente final (delivery), não o de
-   staff — usada só nas rotas de /public/storefront/:slug/{orders,me}. */
-/* `authed=false` aqui: o parâmetro só controla o efeito colateral de
-   tratarSessaoExpirada() (logout de STAFF) em handleResponse — um 401
-   nessas rotas é o token do CLIENTE expirando, não o de staff. */
-export async function apiGetCliente<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, { headers: clienteAuthHeaders() });
-  return handleResponse<T>(res, false);
-}
-
-export async function apiPostCliente<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: "POST",
-    headers: clienteAuthHeaders(),
-    body: JSON.stringify(body),
-  });
-  return handleResponse<T>(res, false);
 }
 
 export async function apiPost<T>(path: string, body: unknown, authed = true): Promise<T> {
@@ -140,6 +107,18 @@ export async function apiPost<T>(path: string, body: unknown, authed = true): Pr
 export async function apiPatch<T>(path: string, body: unknown, authed = true): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: "PATCH",
+    headers: authHeaders(authed),
+    body: JSON.stringify(body),
+  });
+  return handleResponse<T>(res, authed);
+}
+
+/* A superfície V1 documenta os updates como PUT (a `/api/*` usa PATCH). O
+   Rails costuma rotear os dois pro mesmo #update, mas mantemos o verbo do
+   contrato. ⚠️ V1 não confirmada ao vivo. */
+export async function apiPut<T>(path: string, body: unknown, authed = true): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "PUT",
     headers: authHeaders(authed),
     body: JSON.stringify(body),
   });
@@ -170,6 +149,43 @@ export async function apiPostAbsolute<T>(path: string, body: unknown): Promise<T
 export function toNumber(value: number | string | null | undefined): number {
   if (value === null || value === undefined) return 0;
   return typeof value === "number" ? value : parseFloat(value) || 0;
+}
+
+/* ─────────────────────────── Conta de cliente ──────────────────────────
+   O comprador do delivery tem uma sessão PRÓPRIA, separada da de staff:
+   token guardado numa chave diferente (`pratto_cliente_token`) e nunca
+   misturado com `pratto_token`. Um aparelho pode ter os dois ao mesmo
+   tempo (staff logado no painel + cliente logado na vitrine).
+   ⚠️ Endpoints não confirmados ao vivo — ver queries/customers.ts. */
+export const CLIENTE_TOKEN_KEY = "pratto_cliente_token";
+
+function getClienteToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(CLIENTE_TOKEN_KEY);
+}
+
+function clienteHeaders(): HeadersInit {
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  const token = getClienteToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+
+/* `authed=false`: o parâmetro só controla o efeito colateral de
+   tratarSessaoExpirada() (logout de STAFF) em handleResponse — um 401
+   nessas rotas é o token do CLIENTE expirando, não o de staff. */
+export async function clienteApiGet<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, { headers: clienteHeaders() });
+  return handleResponse<T>(res, false);
+}
+
+export async function clienteApiPost<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers: clienteHeaders(),
+    body: JSON.stringify(body),
+  });
+  return handleResponse<T>(res, false);
 }
 
 export { BASE_URL };

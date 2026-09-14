@@ -5,14 +5,22 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useCartStore } from "@/lib/store/cart";
+import { useClienteSessaoStore } from "@/lib/store/clienteSessao";
+import { useHistoricoPedidosStore } from "@/lib/store/historicoPedidos";
+import { useMounted } from "@/lib/hooks/useMounted";
+import { useCriarPedidoPublicoV1 } from "@/lib/api/queries/v1/publico";
+import { extractErrorMessage } from "@/lib/api/client";
 import { formatBRL } from "@/lib/utils";
 import { toast } from "@/components/ui/Toast";
 import { MetodoPagamento, metodosPagamento } from "@/lib/pagamento";
 import { ResumoConfirmacao } from "@/components/pedido/ResumoConfirmacao";
-import { useRestaurante } from "@/lib/api/queries/menu";
-import { useCriarPedido } from "@/lib/api/queries/orders";
-import { apiErrorMessage } from "@/lib/api/client";
-import { ItemSacola } from "@/types/domain";
+import { ItemSacolaLegacy as ItemSacola } from "@/types/domain.legacy";
+
+/* Delivery agora é checkout real: POST /api/public/storefront/:slug/orders
+   não exige login e cria o pedido de verdade no backend (confirmado ao
+   vivo — ver types/api.ts). É o único fluxo público que dá pra tirar do
+   mock: esse endpoint exige endereço, então pedido de mesa/balcão (sem
+   endereço) continua simulado em sacola/page.tsx. */
 
 type Step = "endereco" | "sacola" | "confirmado";
 
@@ -28,17 +36,28 @@ interface Endereco {
 export default function DeliveryPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const [step, setStep] = useState<Step>("endereco");
-  const [numeroPedido, setNumeroPedido] = useState<string | null>(null);
   const [pedidoId, setPedidoId] = useState<string | null>(null);
   const [pagamento, setPagamento] = useState<MetodoPagamento>("pix");
-  const [nomeCliente, setNomeCliente] = useState("");
-  const [telefoneCliente, setTelefoneCliente] = useState("");
   const [pedidoConfirmado, setPedidoConfirmado] = useState<{
     itens: ItemSacola[];
     total: number;
     pagamento: MetodoPagamento;
   } | null>(null);
 
+  /* Pré-preenche com o cadastro simulado feito na tela inicial (ver
+     [slug]/page.tsx) — evita pedir nome/telefone de novo; continua
+     editável e ainda é obrigatório, já que o checkout real (este) exige
+     os dois campos de verdade. `null` = "usuário ainda não digitou nada,
+     usa o valor do cadastro"; string vazia digitada conta como "tocado".
+     Só usa o cadastro depois de montar: vem de localStorage (zustand
+     persist), que no SSR está sempre vazio — usar direto divergiria do
+     HTML do servidor. */
+  const [nomeDigitado, setNomeDigitado] = useState<string | null>(null);
+  const [telefoneDigitado, setTelefoneDigitado] = useState<string | null>(null);
+  const sessao = useClienteSessaoStore();
+  const mounted = useMounted();
+  const nomeCliente = nomeDigitado ?? (mounted ? sessao.cliente?.nome ?? "" : "");
+  const telefoneCliente = telefoneDigitado ?? (mounted ? sessao.cliente?.telefone ?? "" : "");
   const [endereco, setEndereco] = useState<Endereco>({
     logradouro: "",
     numero: "",
@@ -49,18 +68,15 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
   });
 
   const { itens, total: getTotal, quantidadeTotal, removerItem, atualizarQuantidade, limparSacola } = useCartStore();
+  const criarPedido = useCriarPedidoPublicoV1(slug);
+  const adicionarAoHistorico = useHistoricoPedidosStore((s) => s.adicionar);
   const totalSacola = getTotal();
   const qtd = quantidadeTotal();
-
-  const { data: restauranteData } = useRestaurante(slug);
-  const restaurante = restauranteData?.data;
-  const criarPedido = useCriarPedido(slug);
-  const loading = criarPedido.isPending;
 
   const setField = (k: keyof Endereco) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setEndereco((f) => ({ ...f, [k]: e.target.value }));
 
-  const enderecoOk =
+  const dadosOk =
     nomeCliente.trim() &&
     telefoneCliente.trim() &&
     endereco.logradouro.trim() &&
@@ -72,26 +88,43 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
   async function confirmarPedido() {
     if (!itens.length) return;
     const itensPedido = itens;
-    const totalPedido = itensPedido.reduce((acc, item) => acc + item.preco_total, 0);
     try {
-      const { data: pedido } = await criarPedido.mutateAsync({
+      /* Checkout V1 — POST /api/v1/publico/restaurantes/:slug/pedidos.
+         Aceita `tipo` e `itens` (a `/api/public/storefront/:slug/orders`
+         era só delivery e usava `items`/`product_id`). ⚠️ Não confirmada. */
+      const resposta = await criarPedido.mutateAsync({
         tipo: "delivery",
-        nome_cliente: nomeCliente,
-        telefone_cliente: telefoneCliente,
-        endereco_entrega: endereco,
+        nome_cliente: nomeCliente.trim(),
+        telefone_cliente: telefoneCliente.trim(),
+        endereco_entrega: {
+          logradouro: endereco.logradouro.trim(),
+          numero: endereco.numero.trim(),
+          complemento: endereco.complemento.trim() || undefined,
+          bairro: endereco.bairro.trim(),
+          cidade: endereco.cidade.trim(),
+          cep: endereco.cep.trim(),
+        },
         itens: itensPedido.map((item) => ({
           produto_id: item.produto.id,
           quantidade: item.quantidade,
           observacao: item.observacao,
         })),
       });
-      setNumeroPedido(pedido.numero);
-      setPedidoId(pedido.id);
-      setPedidoConfirmado({ itens: itensPedido, total: totalPedido, pagamento });
+
+      const rastreio = resposta.codigo_rastreio ?? resposta.id;
+      setPedidoId(rastreio);
+      setPedidoConfirmado({ itens: itensPedido, total: resposta.total, pagamento });
+      /* A conta de cliente já dá GET /orders (histórico real). Guardar
+         local segue como fallback offline / conta deslogada. */
+      adicionarAoHistorico({
+        codigoRastreio: rastreio,
+        total: resposta.total,
+        criadoEm: new Date().toISOString(),
+      });
       limparSacola();
       setStep("confirmado");
     } catch (err) {
-      toast.error("Erro ao enviar pedido", apiErrorMessage(err), {
+      toast.error("Erro ao enviar pedido", extractErrorMessage(err), {
         label: "Tentar novamente",
         onClick: confirmarPedido,
       });
@@ -110,7 +143,7 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
             🎉
           </div>
           <div>
-            <p className="text-2xl font-bold text-neutral-900">Pedido #{numeroPedido}</p>
+            <p className="text-2xl font-bold text-neutral-900">Pedido #{pedidoId}</p>
             <p className="text-neutral-500 mt-2 text-sm">
               Recebemos seu pedido! Você pode acompanhar o status abaixo.
             </p>
@@ -125,7 +158,6 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
               localDetalhe={`${endereco.logradouro}, ${endereco.numero}${
                 endereco.complemento ? ` - ${endereco.complemento}` : ""
               } — ${endereco.bairro}, ${endereco.cidade} — CEP ${endereco.cep}`}
-              chavePix={restaurante?.chave_pix ?? ""}
             />
           )}
           <div className="flex flex-col gap-3 w-full max-w-xs">
@@ -136,7 +168,7 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
                 </Button>
               </Link>
             )}
-            <Link href={`/${slug}/menu`}>
+            <Link href={`/${slug}/menu?modo=delivery`}>
               <Button theme="coral" variant="secondary" fullWidth>
                 Voltar ao cardápio
               </Button>
@@ -158,7 +190,7 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
             ←
           </button>
         ) : (
-          <Link href={`/${slug}/menu`} className="text-neutral-500 hover:text-neutral-700 text-lg">
+          <Link href={`/${slug}/menu?modo=delivery`} className="text-neutral-500 hover:text-neutral-700 text-lg">
             ←
           </Link>
         )}
@@ -166,7 +198,7 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
         {/* Stepper */}
         <div className="ml-auto flex items-center gap-1.5 text-xs text-neutral-400">
           <span className={step === "endereco" ? "text-coral-500 font-semibold" : ""}>
-            1. Endereço
+            1. Seus dados
           </span>
           <span>›</span>
           <span className={step === "sacola" ? "text-coral-500 font-semibold" : ""}>
@@ -176,26 +208,27 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
       </header>
 
       <main className="max-w-lg mx-auto px-4 py-6 flex flex-col gap-5 pb-28">
-        {/* ─── Step 1: Endereço ─── */}
+        {/* ─── Step 1: Dados + Endereço ─── */}
         {step === "endereco" && (
           <div className="bg-white rounded-2xl p-5 shadow-sm flex flex-col gap-4">
             <h2 className="font-semibold text-neutral-900">Seus dados</h2>
             <Input
               label="Nome"
-              placeholder="Seu nome completo"
+              placeholder="Seu nome"
               value={nomeCliente}
-              onChange={(e) => setNomeCliente(e.target.value)}
+              onChange={(e) => setNomeDigitado(e.target.value)}
               theme="coral"
             />
             <Input
-              label="Telefone / WhatsApp"
+              label="Telefone"
               placeholder="(11) 99999-9999"
               value={telefoneCliente}
-              onChange={(e) => setTelefoneCliente(e.target.value)}
+              onChange={(e) => setTelefoneDigitado(e.target.value)}
               inputMode="tel"
               theme="coral"
             />
-            <h2 className="font-semibold text-neutral-900 pt-2 border-t border-neutral-100">Endereço de entrega</h2>
+
+            <h2 className="font-semibold text-neutral-900 mt-2">Endereço de entrega</h2>
             <Input
               label="CEP"
               placeholder="00000000"
@@ -256,7 +289,7 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
                 className="text-xs text-coral-500 font-medium"
                 onClick={() => setStep("endereco")}
               >
-                Alterar endereço
+                Alterar dados
               </button>
             </div>
 
@@ -270,7 +303,7 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
               <div className="text-center py-8 text-neutral-400">
                 <p className="text-3xl mb-2">🛒</p>
                 <p className="text-sm">Sacola vazia</p>
-                <Link href={`/${slug}/menu`}>
+                <Link href={`/${slug}/menu?modo=delivery`}>
                   <Button theme="coral" variant="secondary" size="sm" className="mt-3">
                     Ir ao cardápio
                   </Button>
@@ -345,7 +378,7 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
 
         {/* Botão de adicionar mais */}
         {step === "sacola" && itens.length > 0 && (
-          <Link href={`/${slug}/menu`}>
+          <Link href={`/${slug}/menu?modo=delivery`}>
             <Button theme="coral" variant="secondary" fullWidth>
               + Adicionar mais itens
             </Button>
@@ -361,7 +394,7 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
               theme="coral"
               size="lg"
               fullWidth
-              disabled={!enderecoOk}
+              disabled={!dadosOk}
               onClick={() => setStep("sacola")}
             >
               {qtd > 0 ? `Continuar com ${qtd} item${qtd > 1 ? "s" : ""}` : "Continuar"}
@@ -372,7 +405,7 @@ export default function DeliveryPage({ params }: { params: Promise<{ slug: strin
               theme="coral"
               size="lg"
               fullWidth
-              loading={loading}
+              loading={criarPedido.isPending}
               onClick={confirmarPedido}
             >
               Confirmar pedido · {formatBRL(totalSacola)}

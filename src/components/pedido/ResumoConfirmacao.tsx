@@ -1,4 +1,6 @@
-import { ItemSacola } from "@/types/domain";
+/* Usado só pelo fluxo público (sacola/delivery), que continua mock —
+   ver Fase 7 do plano de integração. */
+import { ItemSacolaLegacy as ItemSacola } from "@/types/domain.legacy";
 import { formatBRL } from "@/lib/utils";
 
 interface ResumoConfirmacaoProps {

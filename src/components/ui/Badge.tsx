@@ -1,4 +1,4 @@
-import { ItemComandaStatus, OrderStatus, TableStatus } from "@/types/domain";
+import { TableStatus } from "@/types/domain";
 
 type BadgeVariant = "success" | "warning" | "error" | "info" | "neutral";
 
@@ -35,22 +35,6 @@ export function Badge({ children, variant = "neutral", dot = false }: BadgeProps
   );
 }
 
-/* Status do item na comanda/cozinha — só 3 valores existem de verdade no
-   backend (confirmado ao vivo); "entregue" é controle só do front. */
-export function ItemComandaStatusBadge({ status }: { status: ItemComandaStatus }) {
-  const map: Record<ItemComandaStatus, { label: string; variant: BadgeVariant }> = {
-    pendente: { label: "Novo", variant: "warning" },
-    em_andamento: { label: "Em preparo", variant: "info" },
-    pronto: { label: "Pronto", variant: "success" },
-    cancelado: { label: "Cancelado", variant: "error" },
-  };
-  /* Fallback defensivo — se o backend um dia devolver um status que a
-     gente ainda não mapeou, mostra ele cru em vez de quebrar a tela
-     (já aconteceu com "cancelado" antes de virar um valor conhecido). */
-  const { label, variant } = map[status] ?? { label: status, variant: "neutral" as BadgeVariant };
-  return <Badge variant={variant} dot>{label}</Badge>;
-}
-
 /* Status de entrega — na verdade é o mesmo enum de status da comanda
    (confirmado ao vivo testando `status_delivery` no PATCH
    /api/delivery_orders/:id/status: pendente/confirmado/em_preparo/
@@ -70,25 +54,17 @@ export function EntregaStatusBadge({ status }: { status: string }) {
   return <Badge variant={variant} dot>{label}</Badge>;
 }
 
-export function OrderStatusBadge({ status }: { status: OrderStatus }) {
-  const map: Record<OrderStatus, { label: string; variant: BadgeVariant }> = {
-    pendente: { label: "Pendente", variant: "warning" },
-    confirmado: { label: "Confirmado", variant: "info" },
-    em_preparo: { label: "Em preparo", variant: "info" },
-    pronto: { label: "Pronto", variant: "success" },
-    entregue: { label: "Entregue", variant: "neutral" },
-    cancelado: { label: "Cancelado", variant: "error" },
-  };
-  const { label, variant } = map[status] ?? { label: status, variant: "neutral" as BadgeVariant };
-  return <Badge variant={variant} dot>{label}</Badge>;
-}
-
-export function TableStatusBadge({ status }: { status: TableStatus }) {
-  const map: Record<TableStatus, { label: string; variant: BadgeVariant }> = {
+/* Aceita string crua: a superfície V1 (/api/v1/cliente/mesas) pode
+   devolver valores fora do enum antigo (ex.: "fechada"). Fallback
+   defensivo mostra o valor cru em vez de quebrar, igual aos outros
+   badges de status. */
+export function TableStatusBadge({ status }: { status: TableStatus | string }) {
+  const map: Record<string, { label: string; variant: BadgeVariant }> = {
     livre: { label: "Livre", variant: "success" },
     ocupada: { label: "Ocupada", variant: "warning" },
     conta_pedida: { label: "Conta pedida", variant: "info" },
+    fechada: { label: "Fechada", variant: "neutral" },
   };
-  const { label, variant } = map[status];
+  const { label, variant } = map[status] ?? { label: status, variant: "neutral" as BadgeVariant };
   return <Badge variant={variant} dot>{label}</Badge>;
 }

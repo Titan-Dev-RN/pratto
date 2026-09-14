@@ -3,17 +3,20 @@
 import { use } from "react";
 import Link from "next/link";
 import { usePedidoLocalStore, statusSimulado } from "@/lib/store/pedidoLocal";
-import { useClienteCadastroStore } from "@/lib/store/clienteCadastro";
-import { usePedidosCliente } from "@/lib/api/queries/publicOrders";
+import { useHistoricoPedidosStore } from "@/lib/store/historicoPedidos";
+import { usePedidosPublicos } from "@/lib/api/queries/publicOrders";
+import { useMeusPedidosCliente } from "@/lib/api/queries/customers";
+import { useClienteSessaoStore } from "@/lib/store/clienteSessao";
 import { useMounted } from "@/lib/hooks/useMounted";
 import { PageLoader } from "@/components/ui/Spinner";
 import { formatBRL, formatarTempo } from "@/lib/utils";
 
-/* "Meus pedidos" — histórico real de delivery, vindo de
-   GET /api/public/storefront/:slug/orders (filtrado no backend por
-   cliente_id do token autenticado, ver lib/api/queries/publicOrders.ts).
-   Pedido de mesa/balcão continua simulado (lib/store/pedidoLocal.ts, sem
-   endpoint de checkout público pra esse tipo). */
+/* "Meus pedidos" — agora com conta de cliente de verdade:
+   - Logado: GET /api/public/storefront/:slug/orders devolve o histórico
+     real (⚠️ endpoint não confirmado ao vivo).
+   - Deslogado: cai no fallback antigo — códigos de rastreio guardados
+     neste aparelho (historicoPedidos) + pedidos de mesa/balcão simulados
+     (pedidoLocal). */
 
 const statusLabel: Record<string, string> = {
   pendente: "Recebido",
@@ -46,32 +49,49 @@ export default function MeusPedidosPage({ params }: { params: Promise<{ slug: st
   const { slug } = use(params);
   const mounted = useMounted();
 
+  const sessao = useClienteSessaoStore();
+  const logado = mounted && sessao.isAuthed();
+
   const pedidosLocais = usePedidoLocalStore((s) => s.pedidos);
-  const cadastro = useClienteCadastroStore();
-  const autenticado = mounted && cadastro.cadastrado;
-  const { data: pedidosDelivery, isLoading } = usePedidosCliente(slug, autenticado);
+  const historico = useHistoricoPedidosStore((s) => s.pedidos);
+  const codigos = mounted && !logado ? historico.map((h) => h.codigoRastreio) : [];
+  const { pedidos: reais, isLoading: carregandoLocais } = usePedidosPublicos(codigos);
+  const { data: doCliente, isLoading: carregandoCliente } = useMeusPedidosCliente(slug, { enabled: !!logado });
 
-  if (!mounted || (autenticado && isLoading)) return <PageLoader />;
+  if (!mounted || carregandoLocais || (logado && carregandoCliente)) return <PageLoader />;
 
-  const linhasLocais: LinhaPedido[] = Object.values(pedidosLocais).map((p) => ({
-    id: p.id,
-    rotulo: `#${p.numero}`,
-    origem: p.tipo === "mesa" ? `Mesa ${p.mesa_numero ?? ""}` : "Retirada",
-    total: p.total,
-    status: statusSimulado(p.criado_em),
-    criadoEm: p.criado_em,
-  }));
+  const linhasLocais: LinhaPedido[] = logado
+    ? []
+    : Object.values(pedidosLocais).map((p) => ({
+        id: p.id,
+        rotulo: `#${p.numero}`,
+        origem: p.tipo === "mesa" ? `Mesa ${p.mesa_numero ?? ""}` : "Retirada",
+        total: p.total,
+        status: statusSimulado(p.criado_em),
+        criadoEm: p.criado_em,
+      }));
 
-  const linhasDelivery: LinhaPedido[] = (pedidosDelivery ?? []).map((p) => ({
-    id: p.codigo_rastreio,
-    rotulo: `#${p.codigo_rastreio}`,
-    origem: "Delivery",
-    total: p.total,
-    status: p.status,
-    criadoEm: p.created_at,
-  }));
+  const linhasReais: LinhaPedido[] = logado
+    ? (doCliente ?? []).map((p) => ({
+        id: p.codigo_rastreio,
+        rotulo: `#${p.codigo_rastreio}`,
+        origem: "Delivery",
+        total: p.total,
+        status: p.status,
+        criadoEm: "",
+      }))
+    : reais
+        .filter((r): r is typeof r & { data: NonNullable<typeof r.data> } => !!r.data)
+        .map((r) => ({
+          id: r.codigo,
+          rotulo: `#${r.codigo}`,
+          origem: "Delivery",
+          total: r.data.total,
+          status: r.data.status,
+          criadoEm: historico.find((h) => h.codigoRastreio === r.codigo)?.criadoEm ?? "",
+        }));
 
-  const todas = [...linhasLocais, ...linhasDelivery].sort((a, b) => (a.criadoEm < b.criadoEm ? 1 : -1));
+  const todas = [...linhasLocais, ...linhasReais].sort((a, b) => (a.criadoEm < b.criadoEm ? 1 : -1));
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -85,11 +105,12 @@ export default function MeusPedidosPage({ params }: { params: Promise<{ slug: st
       </header>
 
       <main className="max-w-lg mx-auto px-4 py-5">
-        {!autenticado && (
+        {!logado && (
           <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5">
-            <span className="text-base leading-none">🔒</span>
+            <span className="text-base leading-none">📱</span>
             <p className="text-xs text-amber-700">
-              Cadastre-se para pedir delivery e ver seu histórico de pedidos aqui.
+              Sem conta conectada — lista guardada só neste aparelho. Entre na sua conta pra ver o
+              histórico completo.
             </p>
           </div>
         )}

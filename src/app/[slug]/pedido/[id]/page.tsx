@@ -1,12 +1,21 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { usePedidoPublico } from "@/lib/api/queries/orders";
-import { useRestaurante } from "@/lib/api/queries/menu";
-import { OrderStatus } from "@/types/domain";
+import { mockRestaurante } from "@/lib/mock";
+import { usePedidoLocalStore, statusSimulado } from "@/lib/store/pedidoLocal";
+import { usePedidoPublico } from "@/lib/api/queries/publicOrders";
+import { usePedidoPublicoV1 } from "@/lib/api/queries/v1/publico";
+import { useMounted } from "@/lib/hooks/useMounted";
+/* Página pública — pedido de mesa/balcão continua simulado
+   (lib/store/pedidoLocal.ts); pedido de delivery é real (checkout
+   público de verdade, ver [slug]/delivery/page.tsx). O enum de status
+   dos dois bate (confirmado ao vivo contra a API real: pendente/
+   confirmado/em_preparo/pronto/entregue/cancelado), então a mesma
+   timeline serve pros dois casos. */
+import { OrderStatusLegacy as OrderStatus } from "@/types/domain.legacy";
 import { formatBRL } from "@/lib/utils";
-import { Spinner } from "@/components/ui/Spinner";
+import { PageLoader } from "@/components/ui/Spinner";
 
 const steps: { status: OrderStatus; label: string; desc?: string }[] = [
   { status: "confirmado", label: "Pedido recebido" },
@@ -24,27 +33,122 @@ const statusTitulo: Partial<Record<OrderStatus, string>> = {
   entregue: "Pedido entregue 🎉",
 };
 
+interface ItemExibicao {
+  id: string;
+  nome: string;
+  quantidade: number;
+  total: number;
+}
+
 export default function PedidoPage({ params }: { params: Promise<{ slug: string; id: string }> }) {
   const { slug, id } = use(params);
   const [mostrarItens, setMostrarItens] = useState(false);
 
-  const { data: pedidoData, isLoading } = usePedidoPublico(id);
-  const { data: restauranteData } = useRestaurante(slug);
-  const pedido = pedidoData?.data;
-  const restaurante = restauranteData?.data;
+  const pedidoLocal = usePedidoLocalStore((s) => s.pedidos[id]);
+  /* Vem de localStorage (zustand persist) — no SSR está sempre vazio,
+     então só dá pra saber se existe de verdade depois de montar. */
+  const mounted = useMounted();
 
-  if (isLoading || !pedido) {
+  /* Sem achar localmente (pedido de mesa/balcão simulado), tenta remoto:
+     primeiro o rastreio da `/api/*` (confirmado), depois o da V1
+     (/api/v1/publico/pedidos/:id — ⚠️ não confirmado). */
+  const tentarRemoto = mounted && !pedidoLocal;
+  const { data: remotoLegacy, isLoading: carregandoLegacy, isError: erroLegacy } = usePedidoPublico(
+    tentarRemoto ? id : null
+  );
+  const tentarV1 = tentarRemoto && !carregandoLegacy && (erroLegacy || !remotoLegacy);
+  const { data: remotoV1, isLoading: carregandoV1, isError: erroV1 } = usePedidoPublicoV1(tentarV1 ? id : null);
+
+  const pedidoRemoto = remotoLegacy
+    ? {
+        codigo_rastreio: remotoLegacy.codigo_rastreio,
+        status: remotoLegacy.status,
+        total: remotoLegacy.total,
+        items: remotoLegacy.items,
+      }
+    : remotoV1
+      ? {
+          codigo_rastreio: remotoV1.codigo_rastreio ?? remotoV1.id,
+          status: remotoV1.status,
+          total: remotoV1.total,
+          items: (remotoV1.itens ?? []).map((i) => ({
+            id: i.id,
+            quantidade: i.quantidade,
+            preco_unitario: i.preco_unitario,
+            produto: i.produto ? { nome: i.produto.nome } : undefined,
+          })),
+        }
+      : undefined;
+  const carregandoRemoto = carregandoLegacy || carregandoV1;
+  const erroRemoto = erroLegacy && erroV1;
+
+  /* Sem backend acompanhando o pedido simulado de verdade, o status dele
+     "avança" sozinho com o tempo decorrido (statusSimulado); o pedido
+     real já vem com status de verdade do backend, atualizado pelo staff
+     — por isso o polling de 15s em usePedidoPublico. Este intervalo aqui
+     só serve pra reavaliar statusSimulado no caso local. */
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => forceTick((n) => n + 1), 15_000);
+    return () => clearInterval(t);
+  }, []);
+
+  if (!mounted) return <PageLoader />;
+  if (tentarRemoto && carregandoRemoto) return <PageLoader />;
+
+  if (!pedidoLocal && (!pedidoRemoto || erroRemoto)) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Spinner />
+      <div className="min-h-screen bg-neutral-50 flex flex-col items-center justify-center px-6 text-center gap-4">
+        <p className="text-4xl">🔍</p>
+        <div>
+          <p className="text-lg font-bold text-neutral-900">Pedido não encontrado</p>
+          <p className="text-sm text-neutral-500 mt-1">
+            Confira o código do link ou se foi aberto no mesmo navegador em que o pedido foi feito.
+          </p>
+        </div>
+        <Link href={`/${slug}/menu`}>
+          <button className="mt-2 bg-coral-500 text-white rounded-2xl py-3 px-6 font-semibold text-sm active:bg-coral-600 transition-colors">
+            Voltar ao cardápio
+          </button>
+        </Link>
       </div>
     );
   }
 
-  const statusIdx = statusOrder.indexOf(pedido.status);
+  const numero = pedidoLocal?.numero ?? pedidoRemoto!.codigo_rastreio;
+  const status: OrderStatus = pedidoLocal
+    ? statusSimulado(pedidoLocal.criado_em)
+    : (pedidoRemoto!.status as OrderStatus);
+  const total = pedidoLocal?.total ?? pedidoRemoto!.total;
+  const itens: ItemExibicao[] = pedidoLocal
+    ? pedidoLocal.itens.map((i) => ({ id: i.id, nome: i.produto_nome, quantidade: i.quantidade, total: i.preco_total }))
+    : pedidoRemoto!.items.map((i) => ({
+        id: i.id,
+        nome: i.produto?.nome ?? "Produto",
+        quantidade: i.quantidade,
+        total: i.preco_unitario * i.quantidade,
+      }));
 
-  const titulo = statusTitulo[pedido.status] ?? "Acompanhe seu pedido";
-  const eta = pedido.status === "confirmado" || pedido.status === "em_preparo"
+  if (status === "cancelado") {
+    return (
+      <div className="min-h-screen bg-neutral-50 flex flex-col items-center justify-center px-6 text-center gap-4">
+        <p className="text-4xl">😕</p>
+        <div>
+          <p className="text-lg font-bold text-neutral-900">Pedido #{numero} cancelado</p>
+          <p className="text-sm text-neutral-500 mt-1">Fale com a loja se não esperava esse cancelamento.</p>
+        </div>
+        <Link href={`/${slug}/menu`}>
+          <button className="mt-2 bg-coral-500 text-white rounded-2xl py-3 px-6 font-semibold text-sm active:bg-coral-600 transition-colors">
+            Voltar ao cardápio
+          </button>
+        </Link>
+      </div>
+    );
+  }
+
+  const statusIdx = statusOrder.indexOf(status);
+  const titulo = statusTitulo[status] ?? "Acompanhe seu pedido";
+  const eta = status === "confirmado" || status === "em_preparo"
     ? "Previsão em aproximadamente 18 min"
     : null;
 
@@ -58,8 +162,8 @@ export default function PedidoPage({ params }: { params: Promise<{ slug: string;
           </svg>
         </Link>
         <div className="flex-1 min-w-0">
-          <p className="text-xs text-neutral-400">Pedido #{pedido.numero}</p>
-          <p className="text-sm font-medium text-neutral-700 truncate">{restaurante?.nome}</p>
+          <p className="text-xs text-neutral-400">Pedido #{numero}</p>
+          <p className="text-sm font-medium text-neutral-700 truncate">{mockRestaurante.nome}</p>
         </div>
       </header>
 
@@ -114,7 +218,7 @@ export default function PedidoPage({ params }: { params: Promise<{ slug: string;
         {/* Ações */}
         <div className="flex flex-col gap-2.5">
           <a
-            href={`https://wa.me/?text=Olá, tenho uma dúvida sobre o pedido %23${pedido.numero}`}
+            href={`https://wa.me/?text=Olá, tenho uma dúvida sobre o pedido %23${numero}`}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full bg-green-500 text-white rounded-2xl py-4 px-5 font-semibold text-base text-center shadow-sm active:bg-green-600 transition-colors flex items-center justify-center gap-2"
@@ -137,28 +241,28 @@ export default function PedidoPage({ params }: { params: Promise<{ slug: string;
         {mostrarItens && (
           <div className="bg-white rounded-2xl p-5 shadow-sm">
             <ul className="flex flex-col gap-3">
-              {pedido.itens.map((item) => (
+              {itens.map((item) => (
                 <li key={item.id} className="flex justify-between text-sm">
                   <span className="text-neutral-700">
                     <span className="font-semibold text-coral-600">{item.quantidade}×</span>{" "}
-                    {item.produto_nome}
+                    {item.nome}
                   </span>
-                  <span className="font-medium text-neutral-900">{formatBRL(item.preco_total)}</span>
+                  <span className="font-medium text-neutral-900">{formatBRL(item.total)}</span>
                 </li>
               ))}
             </ul>
             <div className="border-t border-neutral-100 mt-4 pt-4 flex justify-between font-bold text-neutral-900">
               <span>Total</span>
-              <span>{formatBRL(pedido.total)}</span>
+              <span>{formatBRL(total)}</span>
             </div>
           </div>
         )}
 
-        {pedido.status === "entregue" && (
+        {status === "entregue" && (
           <div className="bg-green-50 border border-green-200 rounded-2xl p-5 text-center">
             <p className="text-3xl mb-2">😊</p>
             <p className="font-semibold text-green-800">Bom apetite!</p>
-            <p className="text-sm text-green-600 mt-1">Obrigado por pedir no {restaurante?.nome}</p>
+            <p className="text-sm text-green-600 mt-1">Obrigado por pedir no {mockRestaurante.nome}</p>
           </div>
         )}
       </main>

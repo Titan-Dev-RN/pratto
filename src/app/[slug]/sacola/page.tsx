@@ -5,14 +5,16 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { useCartStore } from "@/lib/store/cart";
+import { usePedidoLocalStore } from "@/lib/store/pedidoLocal";
+import { useMounted } from "@/lib/hooks/useMounted";
 import { formatBRL } from "@/lib/utils";
 import { toast } from "@/components/ui/Toast";
-import { useRestaurante } from "@/lib/api/queries/menu";
-import { useCriarPedido } from "@/lib/api/queries/orders";
-import { apiErrorMessage } from "@/lib/api/client";
+import { mockRestaurante } from "@/lib/mock";
 import { MetodoPagamento, metodosPagamento } from "@/lib/pagamento";
 import { ResumoConfirmacao } from "@/components/pedido/ResumoConfirmacao";
-import { ItemSacola } from "@/types/domain";
+import { PageLoader } from "@/components/ui/Spinner";
+/* Página pública em mock — checkout do cliente pausado, ver Fase 7 do plano. */
+import { ItemSacolaLegacy as ItemSacola, ItemPedidoLegacy } from "@/types/domain.legacy";
 
 export default function SacolaPage({ params }: { params: Promise<{ slug: string }> }) {
   return (
@@ -27,6 +29,7 @@ function SacolaContent({ params }: { params: Promise<{ slug: string }> }) {
   const searchParams = useSearchParams();
   const mesaId = searchParams.get("mesa");
 
+  const [loading, setLoading] = useState(false);
   const [pagamento, setPagamento] = useState<MetodoPagamento>("pix");
   const [pedidoConfirmado, setPedidoConfirmado] = useState<{
     id: string;
@@ -37,34 +40,61 @@ function SacolaContent({ params }: { params: Promise<{ slug: string }> }) {
   } | null>(null);
 
   const { itens, total: getTotal, removerItem, atualizarQuantidade, limparSacola } = useCartStore();
+  const salvarPedido = usePedidoLocalStore((s) => s.salvarPedido);
+  /* Carrinho vem de localStorage (zustand persist) — no SSR está sempre
+     vazio, então "sacola vazia" vs. lista de itens só pode decidir depois
+     de montar no cliente, senão diverge do HTML do servidor. */
+  const mounted = useMounted();
   const totalSacola = getTotal();
-
-  const { data: restauranteData } = useRestaurante(slug);
-  const restaurante = restauranteData?.data;
-  const criarPedido = useCriarPedido(slug);
-  const loading = criarPedido.isPending;
 
   async function enviarPedido() {
     if (!itens.length) return;
     const itensPedido = itens;
     const totalPedido = itensPedido.reduce((acc, item) => acc + item.preco_total, 0);
+    setLoading(true);
     try {
-      const { data: pedido } = await criarPedido.mutateAsync({
-        mesa_id: mesaId ?? undefined,
+      await new Promise((r) => setTimeout(r, 1000));
+      const numero = String(Math.floor(Math.random() * 900) + 100);
+      const id = `ped-${Date.now()}`;
+      const agora = new Date().toISOString();
+
+      /* Salva o pedido de verdade (itens/total/pagamento reais) indexado
+         pelo id — é o que corrige "acompanhar pedido" mostrando sempre o
+         mesmo pedido de mentirinha, desconectado do que a pessoa pediu. */
+      const itensParaAcompanhamento: ItemPedidoLegacy[] = itensPedido.map((item, i) => ({
+        id: `${id}-item-${i}`,
+        produto_id: item.produto.id,
+        produto_nome: item.produto.nome,
+        produto_foto: item.produto.foto_url,
+        quantidade: item.quantidade,
+        preco_unitario: item.produto.preco,
+        preco_total: item.preco_total,
+        observacao: item.observacao,
+        variacoes: item.variacoes_selecionadas.map((v) => ({ nome: v.nome, preco_adicional: v.preco_adicional })),
+      }));
+      salvarPedido({
+        id,
+        numero,
         tipo: mesaId ? "mesa" : "balcao",
-        itens: itensPedido.map((item) => ({
-          produto_id: item.produto.id,
-          quantidade: item.quantidade,
-          observacao: item.observacao,
-        })),
+        status: "confirmado",
+        mesa_id: mesaId ?? undefined,
+        mesa_numero: mesaId ? Number(mesaId) : undefined,
+        restaurante_id: slug,
+        itens: itensParaAcompanhamento,
+        total: totalPedido,
+        criado_em: agora,
+        atualizado_em: agora,
       });
-      setPedidoConfirmado({ id: pedido.id, numero: pedido.numero, itens: itensPedido, total: totalPedido, pagamento });
+
+      setPedidoConfirmado({ id, numero, itens: itensPedido, total: totalPedido, pagamento });
       limparSacola();
-    } catch (err) {
-      toast.error("Erro ao enviar pedido", apiErrorMessage(err), {
+    } catch {
+      toast.error("Erro ao enviar pedido", "Tente novamente.", {
         label: "Tentar novamente",
         onClick: enviarPedido,
       });
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -86,7 +116,7 @@ function SacolaContent({ params }: { params: Promise<{ slug: string }> }) {
           metodoPagamento={metodosPagamento.find((m) => m.key === pedidoConfirmado.pagamento)?.label ?? ""}
           localLabel={mesaId ? "Mesa" : "Retirada"}
           localDetalhe={mesaId ? `Mesa ${mesaId}` : "Retirada no balcão da loja"}
-          chavePix={restaurante?.chave_pix ?? ""}
+          chavePix={mockRestaurante.chave_pix ?? ""}
         />
         <div className="flex flex-col gap-3 w-full max-w-xs">
           <Link href={`/${slug}/pedido/${pedidoConfirmado.id}`}>
@@ -104,6 +134,8 @@ function SacolaContent({ params }: { params: Promise<{ slug: string }> }) {
     );
   }
 
+  if (!mounted) return <PageLoader />;
+
   return (
     <div className="min-h-screen bg-neutral-50">
       {/* Header */}
@@ -119,7 +151,7 @@ function SacolaContent({ params }: { params: Promise<{ slug: string }> }) {
         <div className="flex-1 min-w-0">
           <h1 className="font-bold text-neutral-900 text-base leading-tight">Sua sacola</h1>
           <p className="text-xs text-neutral-400 mt-0.5">
-            {restaurante?.nome}{mesaId ? ` · Mesa ${mesaId}` : ""}
+            {mockRestaurante.nome}{mesaId ? ` · Mesa ${mesaId}` : ""}
           </p>
         </div>
       </header>
